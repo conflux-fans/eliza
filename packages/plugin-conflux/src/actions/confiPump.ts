@@ -18,7 +18,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { confluxESpaceTestnet, confluxESpace } from "viem/chains";
 import { parseUnits, getAddress } from "viem/utils";
-import { confluxTransferTemplate } from "../templates/transfer";
+import { confiPumpTemplate } from "../templates/confiPump";
 import {
     PumpSchema,
     isPumpContent,
@@ -85,8 +85,8 @@ async function ensureAllowance(
 export const confiPump: Action = {
     name: "CONFI_PUMP",
     description:
-        "Perform actions on ConfiPump, for example create a new token, buy a token, or sell a token.",
-    similes: ["SELL_TOKEN", "BUY_TOKEN", "CREATE_TOKEN"],
+        "Perform actions on ConfiPump, especiallycreate a new meme token(Need token name, symbol and description), buy a token, or sell a token.",
+    similes: ["CREATE_TOKEN"],
     examples: [
         // Create token example
         [
@@ -116,46 +116,46 @@ export const confiPump: Action = {
                 },
             },
         ],
-        // Buy token example
-        [
-            {
-                user: "{{user1}}",
-                content: {
-                    text: "Buy 0.00069 CFX worth of GLITCHIZA(0x1234567890abcdef)",
-                },
-            },
-            {
-                user: "{{user2}}",
-                content: {
-                    text: "0.00069 CFX bought successfully!",
-                    action: "BUY_TOKEN",
-                    content: {
-                        address: "0x1234567890abcdef",
-                        amount: "0.00069",
-                    },
-                },
-            },
-        ],
-        // Sell token example
-        [
-            {
-                user: "{{user1}}",
-                content: {
-                    text: "Sell 0.00069 CFX worth of GLITCHIZA(0x1234567890abcdef)",
-                },
-            },
-            {
-                user: "{{user2}}",
-                content: {
-                    text: "0.00069 CFX sold successfully: 0x1234567890abcdef",
-                    action: "SELL_TOKEN",
-                    content: {
-                        address: "0x1234567890abcdef",
-                        amount: "0.00069",
-                    },
-                },
-            },
-        ],
+        // // Buy token example
+        // [
+        //     {
+        //         user: "{{user1}}",
+        //         content: {
+        //             text: "Buy 0.00069 CFX worth of GLITCHIZA(0x1234567890abcdef)",
+        //         },
+        //     },
+        //     {
+        //         user: "{{user2}}",
+        //         content: {
+        //             text: "0.00069 CFX bought successfully!",
+        //             action: "BUY_TOKEN",
+        //             content: {
+        //                 address: "0x1234567890abcdef",
+        //                 amount: "0.00069",
+        //             },
+        //         },
+        //     },
+        // ],
+        // // Sell token example
+        // [
+        //     {
+        //         user: "{{user1}}",
+        //         content: {
+        //             text: "Sell 0.00069 CFX worth of GLITCHIZA(0x1234567890abcdef)",
+        //         },
+        //     },
+        //     {
+        //         user: "{{user2}}",
+        //         content: {
+        //             text: "0.00069 CFX sold successfully: 0x1234567890abcdef",
+        //             action: "SELL_TOKEN",
+        //             content: {
+        //                 address: "0x1234567890abcdef",
+        //                 amount: "0.00069",
+        //             },
+        //         },
+        //     },
+        // ],
     ],
 
     validate: async (runtime: IAgentRuntime, message: Memory) => {
@@ -181,7 +181,7 @@ export const confiPump: Action = {
         // Generate content based on template
         const context = composeContext({
             state,
-            template: confluxTransferTemplate,
+            template: confiPumpTemplate,
         });
 
         const content = await generateObject({
@@ -326,6 +326,7 @@ export const confiPump: Action = {
             success = true;
 
             if (callback) {
+                console.log("callback: ", callback);
                 callback({
                     text: `Perform the action successfully: ${content.object.action}: ${hash}`,
                     content: content.object,
@@ -333,6 +334,7 @@ export const confiPump: Action = {
             }
         } catch (error) {
             console.error(`Error performing the action: ${error}`);
+            console.log("callback: ", callback);
             if (callback) {
                 callback({
                     text: `Failed to perform the action: ${content.object.action}: ${error}`,

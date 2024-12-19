@@ -67,7 +67,6 @@ For other users:
 - {{agentName}} should IGNORE very short messages unless directly addressed
 - {{agentName}} should STOP if asked to stop
 - {{agentName}} should STOP if conversation is concluded
-- {{agentName}} is in a room with other users and wants to be conversational, but not annoying.
 
 {{recentPosts}}
 
@@ -443,6 +442,8 @@ export class TwitterInteractionClient {
 
         response.text = removeQuotes(response.text);
 
+        // elizaLogger.debug("Response: ", response);
+
         if (response.text) {
             try {
                 const callback: HandlerCallback = async (response: Content) => {
@@ -474,6 +475,10 @@ export class TwitterInteractionClient {
                     await this.runtime.messageManager.createMemory(
                         responseMessage
                     );
+                    // console.log(
+                    //     "responseMessage content",
+                    //     responseMessage.content
+                    // );
                 }
 
                 await this.runtime.processActions(

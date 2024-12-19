@@ -174,7 +174,9 @@ export async function embed(runtime: IAgentRuntime, input: string) {
     if (config.provider === "OpenAI") {
         return await getRemoteEmbedding(input, {
             model: config.model,
-            endpoint: "https://api.openai.com/v1",
+            endpoint:
+                runtime.character.modelEndpointOverride ||
+                "https://api.openai.com/v1",
             apiKey: settings.OPENAI_API_KEY,
             dimensions: config.dimensions,
         });
