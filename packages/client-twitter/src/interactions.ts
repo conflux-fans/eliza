@@ -373,6 +373,15 @@ export class TwitterInteractionClient {
                                   this.runtime.agentId
                           )
                         : undefined,
+                    attachments: tweet.photos.map((p) => ({
+                        id: p.id,
+                        url: p.url,
+                        title: p.alt_text || "",
+                        source: "twitter",
+                        description: p.alt_text || "",
+                        text: p.alt_text || "",
+                        contentType: "photo",
+                    })),
                 },
                 userId: userIdUUID,
                 roomId,
