@@ -7,7 +7,9 @@
   "dependencies": {
     "@ai16z/eliza": "workspace:*",
     "@apollo/client": "^3.12.3",
-    "cive": "0.7.1"
+    "axios": "^1.7.9",
+    "cive": "0.7.1",
+    "viem": "^2.22.1"
   },
   "scripts": {
     "build": "tsup --format esm --dts",

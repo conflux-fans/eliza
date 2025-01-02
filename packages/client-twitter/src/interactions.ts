@@ -272,7 +272,18 @@ export class TwitterInteractionClient {
                     );
 
                     const message = {
-                        content: { text: tweet.text },
+                        content: {
+                            text: tweet.text,
+                            attachments: tweet.photos.map((p) => ({
+                                id: p.id,
+                                url: p.url,
+                                title: p.alt_text || "",
+                                source: "twitter",
+                                description: p.alt_text || "",
+                                text: p.alt_text || "",
+                                contentType: "photo",
+                            })),
+                        },
                         agentId: this.runtime.agentId,
                         userId: userIdUUID,
                         roomId,
@@ -320,9 +331,14 @@ export class TwitterInteractionClient {
 
         elizaLogger.log("Processing Tweet: ", tweet.id);
         const formatTweet = (tweet: Tweet) => {
-            return `  ID: ${tweet.id}
+            let formatted = `  ID: ${tweet.id}
   From: ${tweet.name} (@${tweet.username})
-  Text: ${tweet.text}`;
+  Text: ${tweet.text}
+  `;
+            if (tweet.photos.length != 0) {
+                formatted += `  Photos: ${tweet.photos.map((p) => p.url).join(", ")}`;
+            }
+            return formatted;
         };
         const currentPost = formatTweet(tweet);
 
@@ -337,7 +353,7 @@ export class TwitterInteractionClient {
                     month: "short",
                     day: "numeric",
                 })}):
-        ${tweet.text}`
+        ${tweet.text}${tweet.photos.length > 0 ? `\nPhoto: ${tweet.photos.map((p) => p.url).join(", ")}` : ""}`
             )
             .join("\n\n");
 
@@ -406,9 +422,8 @@ export class TwitterInteractionClient {
         const shouldRespondContext = composeContext({
             state,
             template:
-                this.runtime.character.templates?.twitterShouldRespondTemplate?.(
-                    validTargetUsersStr
-                ) ||
+                this.runtime.character.templates
+                    ?.twitterShouldRespondTemplate ||
                 this.runtime.character?.templates?.shouldRespondTemplate ||
                 twitterShouldRespondTemplate(validTargetUsersStr),
         });

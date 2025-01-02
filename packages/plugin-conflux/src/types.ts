@@ -41,12 +41,18 @@ export const isPumpRecommendationContent = (
     return false;
 };
 
+export const PumpRejectSchema = z.object({
+    action: z.literal("REJECT"),
+    reason: z.string(),
+});
+
 export const PumpCreateSchema = z.object({
     action: z.literal("CREATE_TOKEN"),
     params: z.object({
         symbol: z.string(),
         name: z.string(),
         description: z.string(),
+        imageUrl: z.string(),
     }),
 });
 
@@ -70,6 +76,7 @@ export const PumpSchema = z.union([
     PumpCreateSchema,
     PumpBuySchema,
     PumpSellSchema,
+    PumpRejectSchema,
 ]);
 
 export type PumpContent = z.infer<typeof PumpSchema>;

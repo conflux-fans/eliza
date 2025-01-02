@@ -563,6 +563,8 @@ export async function generateText({
             }
         }
 
+        elizaLogger.debug("Response: ", response);
+
         return response;
     } catch (error) {
         elizaLogger.error("Error in generateText:", error);
@@ -1065,8 +1067,12 @@ export const generateImage = async (
                 num_inference_steps: modelSettings?.steps ?? 50,
                 guidance_scale: data.guidanceScale || 3.5,
                 num_images: data.count,
-                enable_safety_checker: runtime.getSetting("FAL_AI_ENABLE_SAFETY_CHECKER") === "true",
-                safety_tolerance: Number(runtime.getSetting("FAL_AI_SAFETY_TOLERANCE") || "2"),
+                enable_safety_checker:
+                    runtime.getSetting("FAL_AI_ENABLE_SAFETY_CHECKER") ===
+                    "true",
+                safety_tolerance: Number(
+                    runtime.getSetting("FAL_AI_SAFETY_TOLERANCE") || "2"
+                ),
                 output_format: "png" as const,
                 seed: data.seed ?? 6252023,
                 ...(runtime.getSetting("FAL_AI_LORA_PATH")
@@ -1289,6 +1295,8 @@ export const generateObject = async ({
     const presence_penalty = models[provider].settings.presence_penalty;
     const max_context_length = models[provider].settings.maxInputTokens;
     const max_response_length = models[provider].settings.maxOutputTokens;
+    models[provider].endpoint =
+        runtime.character.modelEndpointOverride || models[provider].endpoint;
     const apiKey = runtime.token;
 
     try {

@@ -4,6 +4,7 @@ import {
     Memory,
     State,
     HandlerCallback,
+    elizaLogger,
 } from "@ai16z/eliza";
 import { generateObject, composeContext, ModelClass } from "@ai16z/eliza";
 import {
@@ -26,6 +27,7 @@ import {
     isPumpCreateContent,
     isPumpSellContent,
 } from "../types";
+import { downloadImage, getImageCID, uploadImage } from "../utils/token/upload";
 import MEMEABI from "../abi/meme";
 import ERC20ABI from "../abi/erc20";
 
@@ -81,11 +83,15 @@ async function ensureAllowance(
     }
 }
 
+// c. 等transaction confirm了之后（很重要、如果不confirm，照片会上传失败），再调用api: /api/uploadToIPFS 得到图片：
+
+// Sample command:
+
 // Main ConfiPump action definition
 export const confiPump: Action = {
     name: "CONFI_PUMP",
     description:
-        "Perform actions on ConfiPump, especiallycreate a new meme token(Need token name, symbol and description), buy a token, or sell a token.",
+        "Perform actions on ConfiPump, especially create a new meme token. This action needs token name, symbol, description and image url.",
     similes: ["CREATE_TOKEN"],
     examples: [
         // Create token example
@@ -93,7 +99,7 @@ export const confiPump: Action = {
             {
                 user: "{{user1}}",
                 content: {
-                    text: "Create a new token called GLITCHIZA with symbol GLITCHIZA and generate a description about it.",
+                    text: "Create a new token called GLITCHIZA with symbol GLITCHIZA and generate a description about it. Photo: https://pbs.twimg.com/media/F68-12QX0AA4-8u?format=jpg&name=large",
                 },
             },
             {
@@ -208,6 +214,16 @@ export const confiPump: Action = {
         let data: any;
         let value: bigint;
 
+        if (contentObject.action === "REJECT") {
+            console.log("reject: ", contentObject.reason);
+            if (callback) {
+                callback({
+                    text: `Action rejected: ${contentObject.reason}`,
+                });
+            }
+            return false;
+        }
+
         try {
             // Handle different action types
             switch (contentObject.action) {
@@ -219,15 +235,37 @@ export const confiPump: Action = {
                         "creating: ",
                         contentObject.params.name,
                         contentObject.params.symbol,
-                        contentObject.params.description
+                        contentObject.params.description,
+                        contentObject.params.imageUrl
                     );
+                    const f = await downloadImage(
+                        contentObject.params.imageUrl
+                    );
+                    const cid = await getImageCID(
+                        runtime.getSetting("CONFLUX_MEME_IPFS_URL"),
+                        f
+                    );
+                    const meta = JSON.stringify({
+                        description: contentObject.params.description,
+                        image: cid,
+                    });
+
+                    // set timeout to upload (90 seconds)
+                    setTimeout(async () => {
+                        const imageUrl = await uploadImage(
+                            runtime.getSetting("CONFLUX_MEME_IPFS_URL"),
+                            f
+                        );
+                        console.log("imageUrl: ", imageUrl);
+                    }, 90000);
+
                     data = encodeFunctionData({
                         abi: MEMEABI,
                         functionName: "newToken",
                         args: [
                             contentObject.params.name,
                             contentObject.params.symbol,
-                            contentObject.params.description,
+                            meta,
                         ],
                     });
                     value = parseEther("10");
