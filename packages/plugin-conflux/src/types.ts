@@ -6,13 +6,35 @@ export const TransferSchema = z.object({
     amount: z.number(), // use number ignoring decimals issue
 });
 
-export interface TransferContent {
-    to: string;
-    amount: number;
-}
+export type TransferContent = z.infer<typeof TransferSchema>;
 
 export const isTransferContent = (object: any): object is TransferContent => {
     if (TransferSchema.safeParse(object).success) {
+        return true;
+    }
+    console.error("Invalid content: ", object);
+    return false;
+};
+
+export const PumpRecommendationSchema = z.object({
+    tokenList: z.array(
+        z.object({
+            symbol: z.string(),
+            name: z.string(),
+            address: z.string(),
+            description: z.string(),
+        })
+    ),
+});
+
+export type PumpRecommendationContent = z.infer<
+    typeof PumpRecommendationSchema
+>;
+
+export const isPumpRecommendationContent = (
+    object: any
+): object is PumpRecommendationContent => {
+    if (PumpRecommendationSchema.safeParse(object).success) {
         return true;
     }
     console.error("Invalid content: ", object);

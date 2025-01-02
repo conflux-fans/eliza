@@ -160,7 +160,12 @@ export const continueAction: Action = {
             return;
         }
 
-        await callback(response);
+        if (callback) {
+            elizaLogger.debug("Start continue callback");
+            await callback(response);
+        } else {
+            elizaLogger.debug("Callback is undefined");
+        }
 
         // if the action is CONTINUE, check if we are over maxContinuesInARow
         if (response.action === "CONTINUE") {
