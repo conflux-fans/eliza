@@ -22,7 +22,7 @@ export const PumpRecommendationSchema = z.object({
             symbol: z.string(),
             name: z.string(),
             address: z.string(),
-            description: z.string(),
+            reason: z.string(),
         })
     ),
 });

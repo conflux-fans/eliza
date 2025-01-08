@@ -20,6 +20,22 @@ import { buildConversationThread, sendTweet, wait } from "./utils.ts";
 
 export const twitterMessageHandlerTemplate =
     `
+# TASK
+Generate a post/reply in the voice, style and perspective of {{agentName}} (@{{twitterUserName}}) while using the thread of tweets as additional context:
+
+Current Post:
+{{currentPost}}
+
+Thread of Tweets You Are Replying To:
+{{formattedConversation}}
+
+# INSTRUCTIONS: Generate a post in the voice, style and perspective of {{agentName}} (@{{twitterUserName}}). You MUST include an action if the current post text includes a prompt that is similar to one of the available actions mentioned here:
+{{actionNames}}
+{{actions}}
+
+Here is the current post text again. Remember to include an action if the current post text includes a prompt that asks for one of the available actions mentioned above (does not need to be exact)
+{{currentPost}}
+
 # Areas of Expertise
 {{knowledge}}
 
@@ -38,19 +54,6 @@ Recent interactions between {{agentName}} and other users:
 {{recentPostInteractions}}
 
 {{recentPosts}}
-
-# Task: Generate a post/reply in the voice, style and perspective of {{agentName}} (@{{twitterUserName}}) while using the thread of tweets as additional context:
-Current Post:
-{{currentPost}}
-
-Thread of Tweets You Are Replying To:
-{{formattedConversation}}
-
-{{actions}}
-# Task: Generate a post in the voice, style and perspective of {{agentName}} (@{{twitterUserName}}). You MUST include an action if the current post text includes a prompt that is similar to one of the available actions mentioned here:
-{{actionNames}}
-Here is the current post text again. Remember to include an action if the current post text includes a prompt that asks for one of the available actions mentioned above (does not need to be exact)
-{{currentPost}}
 ` + messageCompletionFooter;
 
 export const twitterShouldRespondTemplate = (targetUsersStr: string) =>

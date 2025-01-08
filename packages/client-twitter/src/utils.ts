@@ -322,11 +322,29 @@ function splitTweetContent(content: string, maxLength: number): string[] {
     return tweets;
 }
 
-function splitParagraph(paragraph: string, maxLength: number): string[] {
-    // eslint-disable-next-line
-    const sentences = paragraph.match(/[^\.!\?]+[\.!\?]+|[^\.!\?]+$/g) || [
-        paragraph,
-    ];
+function extractUrls(paragraph: string): {
+    textWithPlaceholders: string;
+    placeholderMap: Map<string, string>;
+} {
+    // 这里的正则仅作示例，可根据业务需要升级或改写
+    const urlRegex = /https?:\/\/[^\s]+/g;
+    const placeholderMap = new Map<string, string>();
+
+    let urlIndex = 0;
+    const textWithPlaceholders = paragraph.replace(urlRegex, (match) => {
+        const placeholder = `<<URL_CONSIDERER_23_${urlIndex}>>`; // 占位符，不含. ? ! 等
+        placeholderMap.set(placeholder, match);
+        urlIndex++;
+        return placeholder;
+    });
+
+    return { textWithPlaceholders, placeholderMap };
+}
+
+function splitSentencesAndWords(text: string, maxLength: number): string[] {
+    // 这里按照“句号、问号、感叹号”拆分即可
+    // 注意此时 text 中的 URL 已变成 `<<URL_xxx>>`，不会再被.分割
+    const sentences = text.match(/[^\.!\?]+[\.!\?]+|[^\.!\?]+$/g) || [text];
     const chunks: string[] = [];
     let currentChunk = "";
 
@@ -338,13 +356,16 @@ function splitParagraph(paragraph: string, maxLength: number): string[] {
                 currentChunk = sentence;
             }
         } else {
+            // 放不下了，先把 currentChunk 推到结果
             if (currentChunk) {
                 chunks.push(currentChunk.trim());
             }
+
+            // 如果当前 sentence 本身就小于等于 maxLength
             if (sentence.length <= maxLength) {
                 currentChunk = sentence;
             } else {
-                // Split long sentence into smaller pieces
+                // 需要再对 sentence 做“空格拆分”
                 const words = sentence.split(" ");
                 currentChunk = "";
                 for (const word of words) {
@@ -367,9 +388,39 @@ function splitParagraph(paragraph: string, maxLength: number): string[] {
         }
     }
 
+    // 收尾
     if (currentChunk) {
         chunks.push(currentChunk.trim());
     }
 
     return chunks;
+}
+
+function restoreUrls(
+    chunks: string[],
+    placeholderMap: Map<string, string>
+): string[] {
+    return chunks.map((chunk) => {
+        // 用正则把 chunk 中的所有 <<URL_xxx>> 都替换回去
+        return chunk.replace(/<<URL_CONSIDERER_23_(\d+)>>/g, (match) => {
+            const original = placeholderMap.get(match);
+            return original || match; // 找不到就返回占位符本身（理论不会发生）
+        });
+    });
+}
+
+function splitParagraph(paragraph: string, maxLength: number): string[] {
+    // 1) 提取URL并替换为占位符
+    const { textWithPlaceholders, placeholderMap } = extractUrls(paragraph);
+
+    // 2) 使用第一段的逻辑，先按句子拆分，再做二次拆分
+    const splittedChunks = splitSentencesAndWords(
+        textWithPlaceholders,
+        maxLength
+    );
+
+    // 3) 将占位符替换回原始 URL
+    const restoredChunks = restoreUrls(splittedChunks, placeholderMap);
+
+    return restoredChunks;
 }

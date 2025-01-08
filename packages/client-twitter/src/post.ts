@@ -16,7 +16,32 @@ import { IImageDescriptionService, ServiceType } from "@ai16z/eliza";
 import { buildConversationThread } from "./utils.ts";
 import { twitterMessageHandlerTemplate } from "./interactions.ts";
 
+const confiPumpUrl = process.env.CONFLUX_CONFI_PUMP_URL;
+if (!confiPumpUrl) {
+    throw new Error("CONFLUX_CONFI_PUMP_URL is not set");
+}
+const confiPumpHashtag = process.env.CONFLUX_CONFI_PUMP_HASHTAG;
+if (!confiPumpHashtag) {
+    throw new Error("CONFLUX_CONFI_PUMP_HASHTAG is not set");
+}
+
 const twitterPostTemplate = `
+# Task
+Generate a twitter post in the style and perspective of {{agentName}} @{{twitterUserName}}.
+
+Write a 1-2 sentence post to recommend a token (tagged as $ticker) from token list and state the reason why you recommend it, from the perspective of {{agentName}}. The recommendation should consider both "graduate" and "ungraduate" tokens.
+
+Use simple and concise language.
+Do not state whether you hold the token. Do not urge people to buy the token. Just state the reason why you recommend it.
+Should provide token link in the form of ${confiPumpUrl}/tokens/<token_address>.
+Avoid always recommending the same token (can occasionally recommend the same token).
+
+Do not explicitely mention the token progress. Do not add commentary or acknowledge this request, just write the post.
+
+Add hashtags(#${confiPumpHashtag}) as well as the token ticker to the post to make it easier for people to find.
+
+Your response should not contain any questions. Brief, concise statements only. The total character count MUST be less than {{maxTweetLength}}. No emojis. Use \\n\\n (double spaces) between statements.
+
 # Areas of Expertise
 {{knowledge}}
 
@@ -31,14 +56,17 @@ const twitterPostTemplate = `
 
 {{postDirections}}
 
-# Environment:
+# Token List
+Tokens are listed in the form of "<progress>% <ticker>(<name>) - <description>". The progress is a number between 0 and 100. People buy tokens and so the progress rises. If the progress is greater than 80%, the token will be considered as "graduate".
+
 {{tokenList}}
 
-# Task: Generate a post in the voice and style and perspective of {{agentName}} @{{twitterUserName}}.
-Write a 1-3 sentence post to recommend a token from token list and state the reason why you recommend it, from the perspective of {{agentName}}. Do not add commentary or acknowledge this request, just write the post.
-Your response should not contain any questions. Brief, concise statements only. The total character count MUST be less than {{maxTweetLength}}. No emojis. Use \\n\\n (double spaces) between statements.`;
+# History Tweets
+{{historyTweets}}
+`;
 
-export const twitterActionTemplate = `
+export const twitterActionTemplate =
+    `
 # INSTRUCTIONS: Determine actions for {{agentName}} (@{{twitterUserName}}) based on:
 {{bio}}
 {{postDirections}}
@@ -60,7 +88,21 @@ Tweet:
 # Respond with qualifying action tags only.`
     + postActionResponseFooter;
 
-const MAX_TWEET_LENGTH = 240;
+const MAX_TWEET_LENGTH = 280;
+
+interface TokenInfo {
+    address: `0x${string}`;
+    name: string;
+    symbol: string;
+    description: string;
+    progress: number;
+}
+
+async function getTokenList(elizaHelperUrl: string): Promise<TokenInfo[]> {
+    const response = await fetch(`${elizaHelperUrl}/api/getTokenList`);
+    const data = await response.json();
+    return data["tokenList"];
+}
 
 /**
  * Truncate text to fit within the Twitter character limit, ensuring it ends at a complete sentence.
@@ -69,14 +111,23 @@ function truncateToCompleteSentence(
     text: string,
     maxTweetLength: number
 ): string {
-    if (text.length <= maxTweetLength) {
+    // Count URLs in text and adjust maxTweetLength
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const urls = text.match(urlRegex) || [];
+    let adjustedMaxLength = text.length;
+    for (const url of urls) {
+        adjustedMaxLength -= url.length;
+        adjustedMaxLength += 23;
+    }
+
+    if (adjustedMaxLength <= maxTweetLength) {
         return text;
     }
 
-    // Attempt to truncate at the last period within the limit
+    // Attempt to truncate at the last period within the adjusted limit
     const truncatedAtPeriod = text.slice(
         0,
-        text.lastIndexOf(".", maxTweetLength) + 1
+        text.lastIndexOf(".", adjustedMaxLength) + 1
     );
     if (truncatedAtPeriod.trim().length > 0) {
         return truncatedAtPeriod.trim();
@@ -85,16 +136,15 @@ function truncateToCompleteSentence(
     // If no period is found, truncate to the nearest whitespace
     const truncatedAtSpace = text.slice(
         0,
-        text.lastIndexOf(" ", maxTweetLength)
+        text.lastIndexOf(" ", adjustedMaxLength)
     );
     if (truncatedAtSpace.trim().length > 0) {
         return truncatedAtSpace.trim() + "...";
     }
 
     // Fallback: Hard truncate and add ellipsis
-    return text.slice(0, maxTweetLength - 3).trim() + "...";
+    return text.slice(0, adjustedMaxLength - 3).trim() + "...";
 }
-
 
 export class TwitterPostClient {
     client: ClientBase;
@@ -174,7 +224,7 @@ export class TwitterPostClient {
         if (postImmediately) {
             await this.generateNewTweet();
         }
-        generateNewTweetLoop();
+        // generateNewTweetLoop();
 
         // Add check for ENABLE_ACTION_PROCESSING before starting the loop
         const enableActionProcessing = parseBooleanFromText(
@@ -213,6 +263,28 @@ export class TwitterPostClient {
 
             const topics = this.runtime.character.topics.join(", ");
 
+            const tokenList = await getTokenList(
+                this.runtime.getSetting("CONFLUX_ELIZA_HELPER_URL")
+            );
+
+            // returns AsyncGenerator<Tweet>
+            const latestTweets = await this.client.twitterClient.getTweets(
+                this.twitterUsername,
+                10
+            );
+
+            let formattedTweetList = "";
+
+            let index = 1;
+            for await (const tweet of latestTweets) {
+                formattedTweetList += `${index}. ${tweet.username}: ${tweet.text}\n`;
+                index++;
+            }
+
+            // const formattedConversation = latestTweets.map((tweet) => {
+
+            // console.log("tokenList", tokenList);
+
             const state = await this.runtime.composeState(
                 {
                     userId: this.runtime.agentId,
@@ -225,6 +297,12 @@ export class TwitterPostClient {
                 },
                 {
                     twitterUserName: this.client.profile.username,
+                    tokenList: tokenList
+                        .map((token) => {
+                            return `${token.progress}% $${token.symbol} (${token.name}) ${token.address} - ${token.description}`;
+                        })
+                        .join("\n"),
+                    historyTweets: formattedTweetList,
                 }
             );
 
@@ -240,7 +318,7 @@ export class TwitterPostClient {
             const newTweetContent = await generateText({
                 runtime: this.runtime,
                 context,
-                modelClass: ModelClass.SMALL,
+                modelClass: ModelClass.LARGE,
             });
 
             // First attempt to clean content
