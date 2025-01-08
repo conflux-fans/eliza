@@ -7,6 +7,11 @@ import { recommend } from "./actions/recommend";
 export const confluxPlugin: Plugin = {
     name: "conflux",
     description: "Conflux Plugin for Eliza",
-    actions: [transfer, bridgeTransfer, confiPump, recommend],
+    actions: [
+        // transfer,
+        // bridgeTransfer,
+        // confiPump,
+        recommend
+    ],
     providers: [],
 };
