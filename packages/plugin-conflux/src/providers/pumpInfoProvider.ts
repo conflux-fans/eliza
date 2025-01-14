@@ -1,4 +1,4 @@
-import { Provider, IAgentRuntime, Memory, State } from "@ai16z/eliza";
+import { Provider, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { TokenQueries } from "../utils/subgraph/queries/token";
 import { SubgraphClient } from "../utils/subgraph";
 

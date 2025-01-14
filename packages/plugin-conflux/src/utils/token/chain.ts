@@ -1,7 +1,4 @@
-import {
-    IAgentRuntime,
-    elizaLogger,
-} from "@ai16z/eliza";
+import { IAgentRuntime, elizaLogger } from "@elizaos/core";
 import {
     createPublicClient,
     createWalletClient,
@@ -12,13 +9,10 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { confluxESpaceTestnet, confluxESpace } from "viem/chains";
-import {
-    PumpCreateContent,
-} from "../../types";
+import { PumpCreateContent } from "../../types";
 import { getImageCIDFromURL, uploadImageUsingURL } from "../token/upload";
 import MEMEABI from "../../abi/meme";
 import ERC20ABI from "../../abi/erc20";
-
 
 export function chainFromRuntime(runtime: IAgentRuntime) {
     const isTestnet = runtime.getSetting("CONFLUX_IS_TESTNET") === "true";
@@ -103,7 +97,10 @@ interface TokenCreationResult {
     hash: string;
 }
 
-export async function createToken(runtime: IAgentRuntime, contentObject: PumpCreateContent): Promise<string> {
+export async function createToken(
+    runtime: IAgentRuntime,
+    contentObject: PumpCreateContent
+): Promise<string> {
     // 1. Prepare metadata
     const { name, symbol, description, imageUrl } = contentObject.params;
     elizaLogger.log(
@@ -131,7 +128,12 @@ export async function createToken(runtime: IAgentRuntime, contentObject: PumpCre
 
     // 4. Execute transaction and get token address
     const memeContractAddress = memeContractAddressFromRuntime(runtime);
-    const result = await executeTokenCreation(runtime, memeContractAddress, data, value);
+    const result = await executeTokenCreation(
+        runtime,
+        memeContractAddress,
+        data,
+        value
+    );
 
     // 5. Schedule image upload
     scheduleImageUpload(runtime, imageUrl);
@@ -148,7 +150,12 @@ async function executeTokenCreation(
     data: string,
     value: bigint
 ): Promise<TokenCreationResult> {
-    const hash = await sendTransaction(runtime, memeContractAddress, data, value);
+    const hash = await sendTransaction(
+        runtime,
+        memeContractAddress,
+        data,
+        value
+    );
     const publicClient = publicClientFromRuntime(runtime);
 
     const receipt = await publicClient.waitForTransactionReceipt({ hash });
@@ -156,7 +163,7 @@ async function executeTokenCreation(
 
     const tokenCreatedEvents = parseEventLogs({
         abi: MEMEABI,
-        logs: memeLogs
+        logs: memeLogs,
     });
 
     const tokenAddress = tokenCreatedEvents.find(
@@ -178,11 +185,20 @@ function scheduleImageUpload(runtime: IAgentRuntime, imageUrl: string): void {
     }, 90000);
 }
 
-function formatSuccessMessage(confiPumpUrl: string, tokenName: string, tokenAddress: string): string {
+function formatSuccessMessage(
+    confiPumpUrl: string,
+    tokenName: string,
+    tokenAddress: string
+): string {
     return `Token ${tokenName} created successfully!\nCheck: ${confiPumpUrl}/token/${tokenAddress}`;
 }
 
-async function sendTransaction(runtime: IAgentRuntime, to: `0x${string}`, data: any, value: bigint): Promise<`0x${string}`> {
+async function sendTransaction(
+    runtime: IAgentRuntime,
+    to: `0x${string}`,
+    data: any,
+    value: bigint
+): Promise<`0x${string}`> {
     const account = accountFromRuntime(runtime);
     const walletClient = walletClientFromRuntime(runtime);
 

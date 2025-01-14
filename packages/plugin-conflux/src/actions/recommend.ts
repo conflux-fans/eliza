@@ -4,21 +4,8 @@ import {
     IAgentRuntime,
     Memory,
     State,
-} from "@ai16z/eliza";
-import {
-    generateObject,
-    generateText,
-    composeContext,
-    ModelClass,
-} from "@ai16z/eliza";
-import {
-    PumpInfoProvider,
-    pumpInfoProviderGetter,
-} from "../providers/pumpInfoProvider";
-import {
-    PumpRecommendationSchema,
-    isPumpRecommendationContent,
-} from "../types";
+} from "@elizaos/core";
+import { generateText, composeContext, ModelClass } from "@elizaos/core";
 import { pumpRecommendationTemplate } from "../templates/pumpRecommendation";
 
 interface TokenInfo {
