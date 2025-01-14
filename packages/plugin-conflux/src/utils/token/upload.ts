@@ -23,6 +23,42 @@ export async function downloadImage(imageUrl: string) {
     }
 }
 
+export async function getImageCIDFromURL(helperURL: string, imageUrl: string) {
+    const response = await fetch(helperURL + "/api/getCID", {
+        method: "POST",
+        redirect: 'follow',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ imageUrl }),
+    });
+
+    if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(errorData);
+    }
+
+    const data = await response.json();
+    if (!data.cid) {
+        throw new Error("Failed to get CID");
+    }
+    console.info("getImageCIDFromURL: ", data);
+    return data.cid;
+}
+
+export async function uploadImageUsingURL(helperURL: string, imageUrl: string) {
+    const response = await fetch(helperURL + "/api/uploadToIPFS", {
+        method: "POST",
+        redirect: 'follow',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ imageUrl }),
+    });
+    const data = await response.json();
+    return data;
+}
+
 export async function getImageCID(apiURL: string, f: File) {
     const formData = new FormData();
     formData.append("image", f);

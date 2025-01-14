@@ -11,13 +11,9 @@ import {
     createPublicClient,
     createWalletClient,
     http,
-    parseEther,
     encodeFunctionData,
-    WalletClient,
-    Account,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { confluxESpaceTestnet, confluxESpace } from "viem/chains";
 import { parseUnits, getAddress } from "viem/utils";
 import { confiPumpTemplate } from "../templates/confiPump";
 import {
@@ -27,63 +23,10 @@ import {
     isPumpCreateContent,
     isPumpSellContent,
 } from "../types";
-import { downloadImage, getImageCID, uploadImage } from "../utils/token/upload";
+import { createToken, ensureAllowance, chainFromRuntime } from "../utils/token/chain";
 import MEMEABI from "../abi/meme";
-import ERC20ABI from "../abi/erc20";
 
-// Helper function to check and approve token allowance if needed
-async function ensureAllowance(
-    walletClient: WalletClient,
-    rpcUrl: string,
-    account: Account,
-    tokenAddress: `0x${string}`,
-    memeAddress: `0x${string}`,
-    amount: bigint
-) {
-    console.log(
-        `Checking allowance: token: ${tokenAddress} meme: ${memeAddress} amount: ${amount}`
-    );
 
-    const publicClient = createPublicClient({
-        transport: http(rpcUrl),
-        chain: confluxESpaceTestnet,
-    });
-
-    const allowance = await publicClient.readContract({
-        address: tokenAddress,
-        abi: ERC20ABI,
-        functionName: "allowance",
-        args: [account.address, memeAddress],
-    });
-
-    console.log("allowance:", allowance);
-
-    if (allowance < amount) {
-        console.log(
-            `allowance(${allowance}) is less than amount(${amount}), approving...`
-        );
-
-        const hash = await walletClient.sendTransaction({
-            account,
-            to: tokenAddress,
-            data: encodeFunctionData({
-                abi: ERC20ABI,
-                functionName: "approve",
-                args: [memeAddress, amount - allowance],
-            }),
-            chain: confluxESpaceTestnet,
-            kzg: null,
-        });
-
-        console.log(`Approving hash: ${hash}`);
-        await publicClient.waitForTransactionReceipt({ hash });
-        console.log(`Approving success: ${hash}`);
-    } else {
-        console.log(`No need to approve`);
-    }
-}
-
-// c. 等transaction confirm了之后（很重要、如果不confirm，照片会上传失败），再调用api: /api/uploadToIPFS 得到图片：
 
 // Sample command:
 
@@ -231,44 +174,49 @@ export const confiPump: Action = {
                     if (!isPumpCreateContent(contentObject)) {
                         throw new Error("Invalid content");
                     }
-                    console.log(
-                        "creating: ",
-                        contentObject.params.name,
-                        contentObject.params.symbol,
-                        contentObject.params.description,
-                        contentObject.params.imageUrl
-                    );
-                    const f = await downloadImage(
-                        contentObject.params.imageUrl
-                    );
-                    const cid = await getImageCID(
-                        runtime.getSetting("CONFLUX_MEME_IPFS_URL"),
-                        f
-                    );
-                    const meta = JSON.stringify({
-                        description: contentObject.params.description,
-                        image: cid,
-                    });
+                    const callbackMessage = await createToken(runtime, contentObject);
+                    if (callback) {
+                        callback({
+                            text: callbackMessage,
+                            content: content.object,
+                        });
+                    }
+                    return true
+                    // elizaLogger.log(
+                    //     "[Plugin Conflux] creating token with params: ",
+                    //     contentObject.params.name,
+                    //     contentObject.params.symbol,
+                    //     contentObject.params.description,
+                    //     contentObject.params.imageUrl
+                    // );
+                    // const cid = await getImageCIDFromURL(
+                    //     runtime.getSetting("CONFLUX_ELIZA_HELPER_URL"),
+                    //     contentObject.params.imageUrl
+                    // );
+                    // const meta = JSON.stringify({
+                    //     description: contentObject.params.description,
+                    //     image: cid,
+                    // });
 
-                    // set timeout to upload (90 seconds)
-                    setTimeout(async () => {
-                        const imageUrl = await uploadImage(
-                            runtime.getSetting("CONFLUX_MEME_IPFS_URL"),
-                            f
-                        );
-                        console.log("imageUrl: ", imageUrl);
-                    }, 90000);
+                    // // set timeout to upload (90 seconds)
+                    // setTimeout(async () => {
+                    //     await uploadImageUsingURL(
+                    //         runtime.getSetting("CONFLUX_ELIZA_HELPER_URL"),
+                    //         contentObject.params.imageUrl
+                    //     );
+                    //     console.log("[Plugin Conflux] image uploaded");
+                    // }, 90000);
 
-                    data = encodeFunctionData({
-                        abi: MEMEABI,
-                        functionName: "newToken",
-                        args: [
-                            contentObject.params.name,
-                            contentObject.params.symbol,
-                            meta,
-                        ],
-                    });
-                    value = parseEther("10");
+                    // data = encodeFunctionData({
+                    //     abi: MEMEABI,
+                    //     functionName: "newToken",
+                    //     args: [
+                    //         contentObject.params.name,
+                    //         contentObject.params.symbol,
+                    //         meta,
+                    //     ],
+                    // });
+                    // value = parseEther("10");
                     break;
 
                 case "BUY_TOKEN":
@@ -315,13 +263,8 @@ export const confiPump: Action = {
                     );
 
                     await ensureAllowance(
-                        walletClient,
-                        rpcUrl,
-                        account,
+                        runtime,
                         tokenAddress as `0x${string}`,
-                        runtime.getSetting(
-                            "CONFLUX_MEME_CONTRACT_ADDRESS"
-                        ) as `0x${string}`,
                         amountUnits
                     );
 
@@ -337,7 +280,7 @@ export const confiPump: Action = {
             // Simulate and execute transaction
             const publicClient = createPublicClient({
                 transport: http(rpcUrl),
-                chain: confluxESpaceTestnet,
+                chain: chainFromRuntime(runtime),
             });
 
             const memeContractAddress = runtime.getSetting(
@@ -356,7 +299,7 @@ export const confiPump: Action = {
                 account,
                 to: memeContractAddress,
                 data,
-                chain: confluxESpaceTestnet,
+                chain: chainFromRuntime(runtime),
                 kzg: null,
                 value,
             });
