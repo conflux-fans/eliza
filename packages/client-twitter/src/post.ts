@@ -107,8 +107,6 @@ Tweet:
 # Respond with qualifying action tags only. Default to NO action unless extremely confident of relevance.` +
     postActionResponseFooter;
 
-const MAX_TWEET_LENGTH = 280;
-
 interface TokenInfo {
     address: `0x${string}`;
     name: string;

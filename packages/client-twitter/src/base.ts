@@ -15,6 +15,7 @@ import {
     Scraper,
     SearchMode,
     Tweet,
+    Profile,
 } from "agent-twitter-client";
 import { EventEmitter } from "events";
 import { TwitterConfig } from "./environment.ts";
@@ -97,6 +98,8 @@ export class ClientBase extends EventEmitter {
 
     profile: TwitterProfile | null;
 
+    following: Profile[] = [];
+
     async cacheTweet(tweet: Tweet): Promise<void> {
         if (!tweet) {
             console.warn("Tweet is undefined, skipping cache");
@@ -154,6 +157,14 @@ export class ClientBase extends EventEmitter {
             this.runtime.character.style.all.join("\n- ") +
             "- " +
             this.runtime.character.style.post.join();
+    }
+
+    async updateFollowing() {
+        this.following = (
+            await this.twitterClient.fetchProfileFollowing(this.profile.id, 100)
+        ).profiles;
+
+        elizaLogger.log("Following updated: ", this.following.length);
     }
 
     async init() {
@@ -219,6 +230,13 @@ export class ClientBase extends EventEmitter {
         }
         // Initialize Twitter profile
         this.profile = await this.fetchProfile(username);
+        await this.updateFollowing();
+        setInterval(
+            async () => {
+                await this.updateFollowing();
+            },
+            1000 * 60 * 10 // 10 minutes
+        );
 
         if (this.profile) {
             elizaLogger.log("Twitter user ID:", this.profile.id);

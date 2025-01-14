@@ -20,11 +20,15 @@ import {
 import { ClientBase } from "./base";
 import { buildConversationThread, sendTweet, wait } from "./utils.ts";
 
-export const twitterMessageHandlerTemplate =
-    `
-# TASK
+const ConfiPumpHashTag = process.env.CONFLUX_CONFI_PUMP_HASHTAG;
 
-# TASK: Generate a post/reply in the voice, style and perspective of {{agentName}} (@{{twitterUserName}}) while using the thread of tweets as additional context:
+if (!ConfiPumpHashTag) {
+    throw new Error("CONFLUX_CONFI_PUMP_HASHTAG is not set");
+}
+
+export const twitterMessageHandlerTemplate =
+    `# TASK
+Generate a post/reply in the voice, style and perspective of {{agentName}} (@{{twitterUserName}}) while using the thread of tweets as additional context:
 
 Current Post:
 {{currentPost}}
@@ -34,7 +38,13 @@ Here is the descriptions of images in the Current post.
 Thread of Tweets You Are Replying To:
 {{formattedConversation}}
 
-# INSTRUCTIONS: Generate a post in the voice, style and perspective of {{agentName}} (@{{twitterUserName}}). You MUST include an action if the current post text includes a prompt that is similar to one of the available actions mentioned here:
+# INSTRUCTIONS: Generate a post in the voice, style and perspective of {{agentName}} (@{{twitterUserName}}). Maintain a professional tone throughout the analysis and incorporate brevity, humor, or emoticons where appropriate.
+
+Start with a relevant question to show understanding of the tweet content. Use appropriate hashtags to increase visibility and engagement. For tweets related to ConfiPump: include the hashtags #Conflux #${ConfiPumpHashTag}. For tweets related to Conflux: include hashtags based on the context, such as #Conflux or #CFX $CFX if relevant.
+
+If the tweet mentions {{agentName}} (@{{twitterUserName}}), you can choose to end the tweet with an open-ended question to promote further non-judgmental discussion.
+
+You MUST include an action if the current post text includes a prompt that is similar to one of the available actions mentioned here:
 {{actionNames}}
 {{actions}}
 
@@ -73,8 +83,10 @@ PRIORITY RULE: ALWAYS RESPOND to these users regardless of topic or message cont
 For other users:
 - {{agentName}} should RESPOND to messages directed at them
 - {{agentName}} should RESPOND to conversations relevant to their background
+- {{agentName}} should RESPOND to conversations if they are positive about ConfiPump or Conflux
 - {{agentName}} should IGNORE irrelevant messages
 - {{agentName}} should IGNORE very short messages unless directly addressed
+- {{agentName}} should IGNORE messages that display negativity, such as slander, insults, or unfounded rumors.
 - {{agentName}} should STOP if asked to stop
 - {{agentName}} should STOP if conversation is concluded
 
@@ -116,6 +128,20 @@ export class TwitterInteractionClient {
         handleTwitterInteractionsLoop();
     }
 
+    getTargetUsers() {
+        let targetUsers = [];
+        if (this.client.twitterConfig.TWITTER_TARGET_USERS.length > 0) {
+            targetUsers = this.client.twitterConfig.TWITTER_TARGET_USERS;
+        }
+
+        const following = this.client.following;
+        for (const user of following) {
+            targetUsers.push(user.username);
+        }
+
+        return targetUsers;
+    }
+
     async handleTwitterInteractions() {
         elizaLogger.log("Checking Twitter interactions");
 
@@ -135,10 +161,10 @@ export class TwitterInteractionClient {
                 mentionCandidates.length
             );
             let uniqueTweetCandidates = [...mentionCandidates];
+            const targetUsers = this.getTargetUsers();
             // Only process target users if configured
-            if (this.client.twitterConfig.TWITTER_TARGET_USERS.length) {
-                const TARGET_USERS =
-                    this.client.twitterConfig.TWITTER_TARGET_USERS;
+            if (targetUsers.length) {
+                const TARGET_USERS = targetUsers;
 
                 elizaLogger.log("Processing target users:", TARGET_USERS);
 
@@ -303,6 +329,11 @@ export class TwitterInteractionClient {
 
                     // Update the last checked tweet ID after processing each tweet
                     this.client.lastCheckedTweetId = BigInt(tweet.id);
+                } else {
+                    elizaLogger.log(
+                        "Skipping tweet because it has already been processed",
+                        tweet.id
+                    );
                 }
             }
 
@@ -439,8 +470,7 @@ export class TwitterInteractionClient {
         }
 
         // get usernames into str
-        const validTargetUsersStr =
-            this.client.twitterConfig.TWITTER_TARGET_USERS.join(",");
+        const validTargetUsersStr = this.getTargetUsers().join(",");
 
         const shouldRespondContext = composeContext({
             state,
@@ -454,7 +484,7 @@ export class TwitterInteractionClient {
         const shouldRespond = await generateShouldRespond({
             runtime: this.runtime,
             context: shouldRespondContext,
-            modelClass: ModelClass.MEDIUM,
+            modelClass: ModelClass.SMALL,
         });
 
         // Promise<"RESPOND" | "IGNORE" | "STOP" | null> {
