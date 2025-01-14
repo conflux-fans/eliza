@@ -73,8 +73,8 @@ export const PumpSellSchema = z.object({
 
 export const PumpSchema = z.union([
     PumpCreateSchema,
-    PumpBuySchema,
-    PumpSellSchema,
+    // PumpBuySchema,
+    // PumpSellSchema,
     PumpRejectSchema,
 ]);
 

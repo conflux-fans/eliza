@@ -190,7 +190,7 @@ function formatSuccessMessage(
     tokenName: string,
     tokenAddress: string
 ): string {
-    return `Token ${tokenName} created successfully!\nCheck: ${confiPumpUrl}/token/${tokenAddress}`;
+    return `Token ${tokenName} created successfully!\nCheck: ${confiPumpUrl}/tokens/${tokenAddress}`;
 }
 
 async function sendTransaction(

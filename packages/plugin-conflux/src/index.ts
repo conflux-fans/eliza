@@ -1,7 +1,8 @@
 import { Plugin } from "@elizaos/core";
 import { transfer } from "./actions/transfer";
 import { bridgeTransfer } from "./actions/bridgeTransfer";
-import { confiPump } from "./actions/confiPump";
+// import { confiPump } from "./actions/confiPump";
+import { createMeme } from "./actions/createMeme";
 import { recommend } from "./actions/recommend";
 
 export const confluxPlugin: Plugin = {
@@ -11,7 +12,8 @@ export const confluxPlugin: Plugin = {
         // transfer,
         // bridgeTransfer,
         // confiPump,
-        recommend
+        // createMeme,
+        recommend,
     ],
     providers: [],
 };
