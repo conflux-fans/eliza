@@ -32,11 +32,32 @@ export const parseShouldRespondFromText = (
               : null;
 };
 
-export const booleanFooter = `Respond with a YES or a NO.`;
+export const booleanFooter = `Respond with only a YES or a NO.`;
 
+/**
+ * Parses a string to determine its boolean equivalent.
+ *
+ * Recognized affirmative values: "YES", "Y", "TRUE", "T", "1", "ON", "ENABLE".
+ * Recognized negative values: "NO", "N", "FALSE", "F", "0", "OFF", "DISABLE".
+ *
+ * @param {string} text - The input text to parse.
+ * @returns {boolean|null} - Returns `true` for affirmative inputs, `false` for negative inputs, and `null` for unrecognized inputs or null/undefined.
+ */
 export const parseBooleanFromText = (text: string) => {
-    const match = text.match(/^(YES|NO)$/i);
-    return match ? match[0].toUpperCase() === "YES" : null;
+    if (!text) return null; // Handle null or undefined input
+
+    const affirmative = ["YES", "Y", "TRUE", "T", "1", "ON", "ENABLE"];
+    const negative = ["NO", "N", "FALSE", "F", "0", "OFF", "DISABLE"];
+
+    const normalizedText = text.trim().toUpperCase();
+
+    if (affirmative.includes(normalizedText)) {
+        return true;
+    } else if (negative.includes(normalizedText)) {
+        return false;
+    }
+
+    return null; // Return null for unrecognized inputs
 };
 
 export const stringArrayFooter = `Respond with a JSON array containing the values in a JSON block formatted for markdown with this structure:
@@ -150,12 +171,14 @@ export function parseJSONObjectFromText(
 
 export const postActionResponseFooter = `Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appropriate. Each action must be on its own line. Your response must only include the chosen actions.`;
 
-export const parseActionResponseFromText = (text: string): { actions: ActionResponse } => {
+export const parseActionResponseFromText = (
+    text: string
+): { actions: ActionResponse } => {
     const actions: ActionResponse = {
         like: false,
         retweet: false,
         quote: false,
-        reply: false
+        reply: false,
     };
 
     // Regex patterns
@@ -171,14 +194,56 @@ export const parseActionResponseFromText = (text: string): { actions: ActionResp
     actions.reply = replyPattern.test(text);
 
     // Also do line by line parsing as backup
-    const lines = text.split('\n');
+    const lines = text.split("\n");
     for (const line of lines) {
         const trimmed = line.trim();
-        if (trimmed === '[LIKE]') actions.like = true;
-        if (trimmed === '[RETWEET]') actions.retweet = true;
-        if (trimmed === '[QUOTE]') actions.quote = true;
-        if (trimmed === '[REPLY]') actions.reply = true;
+        if (trimmed === "[LIKE]") actions.like = true;
+        if (trimmed === "[RETWEET]") actions.retweet = true;
+        if (trimmed === "[QUOTE]") actions.quote = true;
+        if (trimmed === "[REPLY]") actions.reply = true;
     }
 
     return { actions };
 };
+
+/**
+ * Truncate text to fit within the character limit, ensuring it ends at a complete sentence.
+ */
+export function truncateToCompleteSentence(
+    text: string,
+    maxTweetLength: number
+): string {
+    // Count URLs in text and adjust maxTweetLength
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const urls = text.match(urlRegex) || [];
+    let adjustedMaxLength = text.length;
+    for (const url of urls) {
+        adjustedMaxLength -= url.length;
+        adjustedMaxLength += 23;
+    }
+
+    if (adjustedMaxLength <= maxTweetLength) {
+        return text;
+    }
+
+    // Attempt to truncate at the last period within the adjusted limit
+    const truncatedAtPeriod = text.slice(
+        0,
+        text.lastIndexOf(".", adjustedMaxLength) + 1
+    );
+    if (truncatedAtPeriod.trim().length > 0) {
+        return truncatedAtPeriod.trim();
+    }
+
+    // If no period is found, truncate to the nearest whitespace
+    const truncatedAtSpace = text.slice(
+        0,
+        text.lastIndexOf(" ", adjustedMaxLength)
+    );
+    if (truncatedAtSpace.trim().length > 0) {
+        return truncatedAtSpace.trim() + "...";
+    }
+
+    // Fallback: Hard truncate and add ellipsis
+    return text.slice(0, adjustedMaxLength - 3).trim() + "...";
+}

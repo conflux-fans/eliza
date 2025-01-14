@@ -1,11 +1,10 @@
 import { Tweet } from "agent-twitter-client";
-import { getEmbeddingZeroVector } from "@ai16z/eliza";
-import { Content, Memory, UUID } from "@ai16z/eliza";
-import { stringToUuid } from "@ai16z/eliza";
+import { getEmbeddingZeroVector } from "@elizaos/core";
+import { Content, Memory, UUID } from "@elizaos/core";
+import { stringToUuid } from "@elizaos/core";
 import { ClientBase } from "./base";
-import { elizaLogger } from "@ai16z/eliza";
-import { DEFAULT_MAX_TWEET_LENGTH } from "./environment";
-import { Media } from "@ai16z/eliza";
+import { elizaLogger } from "@elizaos/core";
+import { Media } from "@elizaos/core";
 import fs from "fs";
 import path from "path";
 
@@ -165,16 +164,6 @@ export async function buildConversationThread(
     return thread;
 }
 
-export function getMediaType(attachment: Media) {
-    if (attachment.contentType?.startsWith("video")) {
-        return "video";
-    } else if (attachment.contentType?.startsWith("image")) {
-        return "image";
-    } else {
-        throw new Error(`Unsupported media type`);
-    }
-}
-
 export async function sendTweet(
     client: ClientBase,
     content: Content,
@@ -182,11 +171,10 @@ export async function sendTweet(
     twitterUsername: string,
     inReplyTo: string
 ): Promise<Memory[]> {
-    const tweetChunks = splitTweetContent(
-        content.text,
-        Number(client.runtime.getSetting("MAX_TWEET_LENGTH")) ||
-            DEFAULT_MAX_TWEET_LENGTH
-    );
+    const maxTweetLength = client.twitterConfig.MAX_TWEET_LENGTH;
+    const isLongTweet = maxTweetLength > 280;
+
+    const tweetChunks = splitTweetContent(content.text, maxTweetLength);
     const sentTweets: Tweet[] = [];
     let previousTweetId = inReplyTo;
 
@@ -207,14 +195,14 @@ export async function sendTweet(
                         const mediaBuffer = Buffer.from(
                             await response.arrayBuffer()
                         );
-                        const mediaType = getMediaType(attachment);
+                        const mediaType = attachment.contentType;
                         return { data: mediaBuffer, mediaType };
                     } else if (fs.existsSync(attachment.url)) {
                         // Handle local file paths
                         const mediaBuffer = await fs.promises.readFile(
                             path.resolve(attachment.url)
                         );
-                        const mediaType = getMediaType(attachment);
+                        const mediaType = attachment.contentType;
                         return { data: mediaBuffer, mediaType };
                     } else {
                         throw new Error(
@@ -224,20 +212,31 @@ export async function sendTweet(
                 })
             );
         }
-        const result = await client.requestQueue.add(
-            async () =>
-                await client.twitterClient.sendTweet(
-                    chunk.trim(),
-                    previousTweetId,
-                    mediaData
-                )
+
+        const cleanChunk = deduplicateMentions(chunk.trim());
+
+        const result = await client.requestQueue.add(async () =>
+            isLongTweet
+                ? client.twitterClient.sendLongTweet(
+                      cleanChunk,
+                      previousTweetId,
+                      mediaData
+                  )
+                : client.twitterClient.sendTweet(
+                      cleanChunk,
+                      previousTweetId,
+                      mediaData
+                  )
         );
+
         const body = await result.json();
+        const tweetResult = isLongTweet
+            ? body?.data?.notetweet_create?.tweet_results?.result
+            : body?.data?.create_tweet?.tweet_results?.result;
 
         // if we have a response
-        if (body?.data?.create_tweet?.tweet_results?.result) {
+        if (tweetResult) {
             // Parse the response
-            const tweetResult = body.data.create_tweet.tweet_results.result;
             const finalTweet: Tweet = {
                 id: tweetResult.rest_id,
                 text: tweetResult.legacy.full_text,
@@ -257,7 +256,10 @@ export async function sendTweet(
             sentTweets.push(finalTweet);
             previousTweetId = finalTweet.id;
         } else {
-            console.error("Error sending chunk", chunk, "repsonse:", body);
+            elizaLogger.error("Error sending tweet chunk:", {
+                chunk,
+                response: body,
+            });
         }
 
         // Wait a bit between tweets to avoid rate limiting issues
@@ -326,13 +328,15 @@ function extractUrls(paragraph: string): {
     textWithPlaceholders: string;
     placeholderMap: Map<string, string>;
 } {
-    // 这里的正则仅作示例，可根据业务需要升级或改写
+    // replace https urls with placeholder
     const urlRegex = /https?:\/\/[^\s]+/g;
     const placeholderMap = new Map<string, string>();
 
     let urlIndex = 0;
     const textWithPlaceholders = paragraph.replace(urlRegex, (match) => {
-        const placeholder = `<<URL_CONSIDERER_23_${urlIndex}>>`; // 占位符，不含. ? ! 等
+        // twitter url would be considered as 23 characters
+        // <<URL_CONSIDERER_23_1>> is also 23 characters
+        const placeholder = `<<URL_CONSIDERER_23_${urlIndex}>>`; // Placeholder without . ? ! etc
         placeholderMap.set(placeholder, match);
         urlIndex++;
         return placeholder;
@@ -342,9 +346,9 @@ function extractUrls(paragraph: string): {
 }
 
 function splitSentencesAndWords(text: string, maxLength: number): string[] {
-    // 这里按照“句号、问号、感叹号”拆分即可
-    // 注意此时 text 中的 URL 已变成 `<<URL_xxx>>`，不会再被.分割
-    const sentences = text.match(/[^\.!\?]+[\.!\?]+|[^\.!\?]+$/g) || [text];
+    // Split by periods, question marks and exclamation marks
+    // Note that URLs in text have been replaced with `<<URL_xxx>>` and won't be split by dots
+    const sentences = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
     const chunks: string[] = [];
     let currentChunk = "";
 
@@ -356,16 +360,16 @@ function splitSentencesAndWords(text: string, maxLength: number): string[] {
                 currentChunk = sentence;
             }
         } else {
-            // 放不下了，先把 currentChunk 推到结果
+            // Can't fit more, push currentChunk to results
             if (currentChunk) {
                 chunks.push(currentChunk.trim());
             }
 
-            // 如果当前 sentence 本身就小于等于 maxLength
+            // If current sentence itself is less than or equal to maxLength
             if (sentence.length <= maxLength) {
                 currentChunk = sentence;
             } else {
-                // 需要再对 sentence 做“空格拆分”
+                // Need to split sentence by spaces
                 const words = sentence.split(" ");
                 currentChunk = "";
                 for (const word of words) {
@@ -388,7 +392,7 @@ function splitSentencesAndWords(text: string, maxLength: number): string[] {
         }
     }
 
-    // 收尾
+    // Handle remaining content
     if (currentChunk) {
         chunks.push(currentChunk.trim());
     }
@@ -396,30 +400,57 @@ function splitSentencesAndWords(text: string, maxLength: number): string[] {
     return chunks;
 }
 
+function deduplicateMentions(paragraph: string) {
+    // Regex to match mentions at the beginning of the string
+    const mentionRegex = /^@(\w+)(?:\s+@(\w+))*(\s+|$)/;
+
+    // Find all matches
+    const matches = paragraph.match(mentionRegex);
+
+    if (!matches) {
+        return paragraph; // If no matches, return the original string
+    }
+
+    // Extract mentions from the match groups
+    let mentions = matches.slice(0, 1)[0].trim().split(" ");
+
+    // Deduplicate mentions
+    mentions = [...new Set(mentions)];
+
+    // Reconstruct the string with deduplicated mentions
+    const uniqueMentionsString = mentions.join(" ");
+
+    // Find where the mentions end in the original string
+    const endOfMentions = paragraph.indexOf(matches[0]) + matches[0].length;
+
+    // Construct the result by combining unique mentions with the rest of the string
+    return uniqueMentionsString + " " + paragraph.slice(endOfMentions);
+}
+
 function restoreUrls(
     chunks: string[],
     placeholderMap: Map<string, string>
 ): string[] {
     return chunks.map((chunk) => {
-        // 用正则把 chunk 中的所有 <<URL_xxx>> 都替换回去
+        // Replace all <<URL_CONSIDERER_23_>> in chunk back to original URLs using regex
         return chunk.replace(/<<URL_CONSIDERER_23_(\d+)>>/g, (match) => {
             const original = placeholderMap.get(match);
-            return original || match; // 找不到就返回占位符本身（理论不会发生）
+            return original || match; // Return placeholder if not found (theoretically won't happen)
         });
     });
 }
 
 function splitParagraph(paragraph: string, maxLength: number): string[] {
-    // 1) 提取URL并替换为占位符
+    // 1) Extract URLs and replace with placeholders
     const { textWithPlaceholders, placeholderMap } = extractUrls(paragraph);
 
-    // 2) 使用第一段的逻辑，先按句子拆分，再做二次拆分
+    // 2) Use first section's logic to split by sentences first, then do secondary split
     const splittedChunks = splitSentencesAndWords(
         textWithPlaceholders,
         maxLength
     );
 
-    // 3) 将占位符替换回原始 URL
+    // 3) Replace placeholders back to original URLs
     const restoredChunks = restoreUrls(splittedChunks, placeholderMap);
 
     return restoredChunks;
