@@ -288,6 +288,133 @@ export async function sendTweet(
     return memories;
 }
 
+export async function sendQuoteTweet(
+    client: ClientBase,
+    content: Content,
+    roomId: UUID,
+    twitterUsername: string,
+    inReplyTo: string
+): Promise<Memory[]> {
+    const maxTweetLength = client.twitterConfig.MAX_TWEET_LENGTH;
+    const isLongTweet = maxTweetLength > 280;
+
+    const tweetChunks = splitTweetContent(content.text, maxTweetLength);
+    if (isLongTweet && tweetChunks.length > 1) {
+        throw new Error("Cannot quote in long tweet mode");
+    }
+    const sentTweets: Tweet[] = [];
+    let previousTweetId = inReplyTo;
+    let quoted = false;
+
+    for (const chunk of tweetChunks) {
+        let mediaData: { data: Buffer; mediaType: string }[] | undefined;
+
+        if (content.attachments && content.attachments.length > 0) {
+            mediaData = await Promise.all(
+                content.attachments.map(async (attachment: Media) => {
+                    if (/^(http|https):\/\//.test(attachment.url)) {
+                        // Handle HTTP URLs
+                        const response = await fetch(attachment.url);
+                        if (!response.ok) {
+                            throw new Error(
+                                `Failed to fetch file: ${attachment.url}`
+                            );
+                        }
+                        const mediaBuffer = Buffer.from(
+                            await response.arrayBuffer()
+                        );
+                        const mediaType = attachment.contentType;
+                        return { data: mediaBuffer, mediaType };
+                    } else if (fs.existsSync(attachment.url)) {
+                        // Handle local file paths
+                        const mediaBuffer = await fs.promises.readFile(
+                            path.resolve(attachment.url)
+                        );
+                        const mediaType = attachment.contentType;
+                        return { data: mediaBuffer, mediaType };
+                    } else {
+                        throw new Error(
+                            `File not found: ${attachment.url}. Make sure the path is correct.`
+                        );
+                    }
+                })
+            );
+        }
+
+        const cleanChunk = deduplicateMentions(chunk.trim());
+
+        const result = await client.requestQueue.add(async () =>
+            quoted
+                ? client.twitterClient.sendTweet(
+                      cleanChunk,
+                      previousTweetId,
+                      mediaData
+                  )
+                : client.twitterClient.sendQuoteTweet(
+                      cleanChunk,
+                      previousTweetId,
+                      { mediaData }
+                  )
+        );
+
+        const body = await result.json();
+        const tweetResult = body?.data?.create_tweet?.tweet_results?.result;
+
+        // if we have a response
+        if (tweetResult) {
+            // Parse the response
+            const finalTweet: Tweet = {
+                id: tweetResult.rest_id,
+                text: tweetResult.legacy.full_text,
+                conversationId: tweetResult.legacy.conversation_id_str,
+                timestamp:
+                    new Date(tweetResult.legacy.created_at).getTime() / 1000,
+                userId: tweetResult.legacy.user_id_str,
+                inReplyToStatusId: tweetResult.legacy.in_reply_to_status_id_str,
+                permanentUrl: `https://twitter.com/${twitterUsername}/status/${tweetResult.rest_id}`,
+                hashtags: [],
+                mentions: [],
+                photos: [],
+                thread: [],
+                urls: [],
+                videos: [],
+            };
+            sentTweets.push(finalTweet);
+            quoted = true;
+            previousTweetId = finalTweet.id;
+        } else {
+            elizaLogger.error("Error sending tweet chunk:", {
+                chunk,
+                response: body,
+            });
+        }
+
+        // Wait a bit between tweets to avoid rate limiting issues
+        await wait(1000, 2000);
+    }
+
+    const memories: Memory[] = sentTweets.map((tweet) => ({
+        id: stringToUuid(tweet.id + "-" + client.runtime.agentId),
+        agentId: client.runtime.agentId,
+        userId: client.runtime.agentId,
+        content: {
+            text: tweet.text,
+            source: "twitter",
+            url: tweet.permanentUrl,
+            inReplyTo: tweet.inReplyToStatusId
+                ? stringToUuid(
+                      tweet.inReplyToStatusId + "-" + client.runtime.agentId
+                  )
+                : undefined,
+        },
+        roomId,
+        embedding: getEmbeddingZeroVector(),
+        createdAt: tweet.timestamp * 1000,
+    }));
+
+    return memories;
+}
+
 function splitTweetContent(content: string, maxLength: number): string[] {
     const paragraphs = content.split("\n\n").map((p) => p.trim());
     const tweets: string[] = [];

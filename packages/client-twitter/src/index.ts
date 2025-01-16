@@ -5,7 +5,7 @@ import { TwitterInteractionClient } from "./interactions.ts";
 import { TwitterPostClient } from "./post.ts";
 import { TwitterSearchClient } from "./search.ts";
 import { TwitterSpaceClient } from "./spaces.ts";
-
+import { TwitterQuoteClient } from "./quote.ts";
 /**
  * A manager that orchestrates all specialized Twitter logic:
  * - client: base operations (login, timeline caching, etc.)
@@ -19,6 +19,7 @@ class TwitterManager {
     post: TwitterPostClient;
     search: TwitterSearchClient;
     interaction: TwitterInteractionClient;
+    quote: TwitterQuoteClient;
     space?: TwitterSpaceClient;
 
     constructor(runtime: IAgentRuntime, twitterConfig: TwitterConfig) {
@@ -45,6 +46,8 @@ class TwitterManager {
         if (twitterConfig.TWITTER_SPACES_ENABLE) {
             this.space = new TwitterSpaceClient(this.client, runtime);
         }
+
+        this.quote = new TwitterQuoteClient(this.client, runtime);
     }
 }
 
@@ -70,6 +73,8 @@ export const TwitterClientInterface: Client = {
 
         // Start interactions (mentions, replies)
         await manager.interaction.start();
+
+        await manager.quote.start();
 
         // If Spaces are enabled, start the periodic check
         if (manager.space) {
