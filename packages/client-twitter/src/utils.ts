@@ -164,6 +164,22 @@ export async function buildConversationThread(
     return thread;
 }
 
+export function formatTweets(tweets: Tweet[]): string {
+    return tweets
+        .map(
+            (tweet) => `@${tweet.username} (${new Date(
+                tweet.timestamp * 1000
+            ).toLocaleString("en-US", {
+                hour: "2-digit",
+                minute: "2-digit",
+                month: "short",
+                day: "numeric",
+            })}):
+        ${tweet.text}${tweet.photos.length > 0 ? `\nPhoto: ${tweet.photos.map((p) => p.url).join(", ")}` : ""}`
+        )
+        .join("\n\n");
+}
+
 export async function sendTweet(
     client: ClientBase,
     content: Content,

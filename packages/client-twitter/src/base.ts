@@ -161,10 +161,29 @@ export class ClientBase extends EventEmitter {
 
     async updateFollowing() {
         this.following = (
-            await this.twitterClient.fetchProfileFollowing(this.profile.id, 100)
+            await this.requestQueue.add(() =>
+                this.twitterClient.fetchProfileFollowing(this.profile.id, 100)
+            )
         ).profiles;
 
         elizaLogger.log("Following updated: ", this.following.length);
+    }
+
+    async getCachedTweetUserProfile(username: string): Promise<Profile> {
+        const result =
+            (await this.runtime.cacheManager.get<Profile>(
+                `twitter/user_profiles/${username}`
+            )) ||
+            (await this.requestQueue.add(() =>
+                this.twitterClient.getProfile(username)
+            ));
+        if (result) {
+            await this.runtime.cacheManager.set(
+                `twitter/user_profiles/${username}`,
+                result
+            );
+        }
+        return result;
     }
 
     async init() {
@@ -389,6 +408,20 @@ export class ClientBase extends EventEmitter {
         cursor?: string
     ): Promise<QueryTweetsResponse> {
         try {
+            // Check cache first
+            const cacheKey = `twitter/search/${query}/${searchMode}`;
+            const cachedResult =
+                await this.runtime.cacheManager.get<QueryTweetsResponse>(
+                    cacheKey
+                );
+
+            if (cachedResult && cachedResult.tweets.length >= maxTweets) {
+                // If cache has enough tweets, return subset
+                return {
+                    tweets: cachedResult.tweets.slice(0, maxTweets),
+                };
+            }
+
             // Sometimes this fails because we are rate limited. in this case, we just need to return an empty array
             // if we dont get a response in 5 seconds, something is wrong
             const timeoutPromise = new Promise((resolve) =>
@@ -408,7 +441,17 @@ export class ClientBase extends EventEmitter {
                             timeoutPromise,
                         ])
                 );
-                return (result ?? { tweets: [] }) as QueryTweetsResponse;
+
+                const finalResult = (result ?? {
+                    tweets: [],
+                }) as QueryTweetsResponse;
+
+                // Cache the result for 60 seconds
+                await this.runtime.cacheManager.set(cacheKey, finalResult, {
+                    expires: Date.now() + 60 * 1000,
+                });
+
+                return finalResult;
             } catch (error) {
                 elizaLogger.error("Error fetching search tweets:", error);
                 return { tweets: [] };

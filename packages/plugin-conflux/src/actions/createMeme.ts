@@ -6,10 +6,137 @@ import {
     HandlerCallback,
     elizaLogger,
 } from "@elizaos/core";
-import { generateObject, composeContext, ModelClass } from "@elizaos/core";
-import { createMemeTemplate } from "../templates/createMeme";
+import {
+    generateObject,
+    generateShouldRespond,
+    composeContext,
+    ModelClass,
+} from "@elizaos/core";
+import {
+    createMemeTemplate,
+    shouldCreateMemeTemplate,
+} from "../templates/createMeme";
 import { PumpSchema, isPumpContent, isPumpCreateContent } from "../types";
 import { createToken } from "../utils/token/chain";
+
+// Track daily meme creation count per user
+interface UserMemeCount {
+    count: number;
+    lastResetDate: number;
+}
+const userMemeCounts: Map<string, UserMemeCount> = new Map();
+
+function resetDailyCountIfNeeded(username: string) {
+    const now = new Date();
+    const todayStart = now.setHours(0, 0, 0, 0);
+
+    const userCount = userMemeCounts.get(username);
+    if (!userCount || todayStart > userCount.lastResetDate) {
+        userMemeCounts.set(username, {
+            count: 0,
+            lastResetDate: todayStart,
+        });
+    }
+}
+
+async function canCreateMeme(runtime: IAgentRuntime, state: State) {
+    if (!runtime.getSetting("CONFLUX_MEME_CREATE_TWITTER_RESTRICTION")) {
+        return true;
+    }
+
+    if (!state.senderUsername) {
+        elizaLogger.error("Missing senderUsername in state");
+        return false;
+    }
+
+    const username = state.senderUsername as string;
+    resetDailyCountIfNeeded(username);
+
+    const userCount = userMemeCounts.get(username);
+    const dailyLimit = Number(
+        runtime.getSetting(
+            "CONFLUX_MEME_CREATE_TWITTER_RESTRICTION_DAILY_LIMIT"
+        ) || 1
+    );
+
+    if (userCount && userCount.count >= dailyLimit) {
+        elizaLogger.warn(
+            `Daily meme creation limit (${dailyLimit}) reached for user ${username}`
+        );
+        throw new Error(
+            `Daily meme creation limit (${dailyLimit}) reached for user ${username}`
+        );
+    }
+
+    // Check if required state values exist
+    if (!state.senderFollowersCount) {
+        elizaLogger.error("Missing senderFollowersCount in state");
+        return false;
+    }
+
+    if (!state.senderRecentTweets) {
+        elizaLogger.error("Missing senderRecentTweets in state");
+        return false;
+    }
+
+    if (!state.senderCreatedAt) {
+        elizaLogger.error("Missing senderCreatedAt in state");
+        return false;
+    }
+    const senderFollowersCount = state.senderFollowersCount as number;
+    // const senderRecentTweets = state.senderRecentTweets as any[];
+    const senderCreatedAt = state.senderCreatedAt as number;
+
+    elizaLogger.info(
+        `senderFollowersCount (${typeof senderFollowersCount}): `,
+        senderFollowersCount
+    );
+    elizaLogger.info(
+        `senderCreatedAt (${senderCreatedAt.constructor.name}): `,
+        senderCreatedAt
+    );
+
+    if (
+        senderFollowersCount <
+        Number(
+            runtime.getSetting(
+                "CONFLUX_MEME_CREATE_TWITTER_RESTRICTION_MIN_FOLLOWERS"
+            )
+        )
+    ) {
+        throw new Error(`Do not have enough followers to create a meme`);
+    }
+
+    const minDaysPeriod = Number(
+        runtime.getSetting(
+            "CONFLUX_MEME_CREATE_TWITTER_RESTRICTION_MIN_CREATED_DAY_PERIOD"
+        )
+    );
+    const daysDiff = (Date.now() - senderCreatedAt) / (1000 * 60 * 60 * 24);
+    if (daysDiff < minDaysPeriod) {
+        throw new Error(
+            `Need to wait for ${minDaysPeriod} days since you created your account to create a meme`
+        );
+    }
+
+    const context = composeContext({
+        state,
+        template: shouldCreateMemeTemplate,
+    });
+
+    const shouldRespond = await generateShouldRespond({
+        runtime,
+        context,
+        modelClass: ModelClass.SMALL,
+    });
+
+    if (shouldRespond !== "RESPOND") {
+        elizaLogger.warn("Should not respond");
+        return false;
+    }
+
+    return true;
+}
 
 // Main ConfiPump action definition
 export const createMeme: Action = {
@@ -101,49 +228,64 @@ export const createMeme: Action = {
     ) => {
         let success = false;
 
-        // Initialize or update state
-        if (!state) {
-            elizaLogger.warn("No state found, composing state");
-            state = (await runtime.composeState(message)) as State;
-        } else {
-            state = await runtime.updateRecentMessageState(state);
-        }
-
-        // Generate content based on template
-        const context = composeContext({
-            state,
-            template: createMemeTemplate,
-        });
-
-        const content = await generateObject({
-            runtime,
-            context,
-            modelClass: ModelClass.LARGE,
-            schema: PumpSchema,
-        });
-
-        if (!isPumpContent(content.object)) {
-            throw new Error("Invalid content");
-        }
-
-        const contentObject = content.object;
-
-        if (contentObject.action === "REJECT") {
-            console.log("reject: ", contentObject.reason);
-            if (callback) {
-                callback({
-                    text: `${contentObject.reason}`,
-                });
-            }
-            return false;
-        }
-
-        if (!isPumpCreateContent(contentObject)) {
-            elizaLogger.error("Invalid PumpCreateContent: ", contentObject);
-            throw new Error("Invalid PumpCreateContent");
-        }
         try {
+            // Initialize or update state
+            if (!state) {
+                elizaLogger.warn("No state found, composing state");
+                state = (await runtime.composeState(message)) as State;
+            } else {
+                state = await runtime.updateRecentMessageState(state);
+            }
+
+            if (!(await canCreateMeme(runtime, state))) {
+                throw new Error("Not allowed to create coin.");
+            }
+
+            // Generate content based on template
+            const context = composeContext({
+                state,
+                template: createMemeTemplate,
+            });
+
+            const content = await generateObject({
+                runtime,
+                context,
+                modelClass: ModelClass.LARGE,
+                schema: PumpSchema,
+            });
+
+            if (!isPumpContent(content.object)) {
+                throw new Error("Invalid content");
+            }
+
+            const contentObject = content.object;
+
+            if (contentObject.action === "REJECT") {
+                console.log("reject: ", contentObject.reason);
+                if (callback) {
+                    callback({
+                        text: `${contentObject.reason}`,
+                    });
+                }
+                return false;
+            }
+
+            if (!isPumpCreateContent(contentObject)) {
+                elizaLogger.error("Invalid PumpCreateContent: ", contentObject);
+                throw new Error("Invalid PumpCreateContent");
+            }
             const callbackMessage = await createToken(runtime, contentObject);
+
+            // Increment daily count for the user after successful creation
+            if (runtime.getSetting("CONFLUX_MEME_CREATE_TWITTER_RESTRICTION")) {
+                const username = state.senderUsername as string;
+                const userCount = userMemeCounts.get(username);
+                if (userCount) {
+                    userCount.count++;
+                    userMemeCounts.set(username, userCount);
+                }
+            }
+
             if (callback) {
                 callback({
                     text: callbackMessage,
@@ -155,7 +297,7 @@ export const createMeme: Action = {
             elizaLogger.error(`Error performing the action: ${error}`);
             if (callback) {
                 callback({
-                    text: `Failed to perform the action: ${content.object.action}: ${error}`,
+                    text: `Failed to perform the action: ${error}`,
                 });
             }
         }

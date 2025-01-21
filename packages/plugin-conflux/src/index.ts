@@ -12,7 +12,7 @@ export const confluxPlugin: Plugin = {
         // transfer,
         // bridgeTransfer,
         // confiPump,
-        // createMeme,
+        createMeme,
         recommend,
     ],
     providers: [],
