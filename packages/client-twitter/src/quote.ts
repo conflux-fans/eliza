@@ -144,7 +144,7 @@ export class TwitterQuoteClient {
             const isRecent =
                 Date.now() - tweet.timestamp * 1000 < 2 * 60 * 60 * 1000;
 
-            elizaLogger.log(`Tweet ${tweet.id} checks:`, {
+            elizaLogger.debug(`Tweet ${tweet.id} checks:`, {
                 isUnprocessed,
                 isRecent,
                 isReply: tweet.isReply,
@@ -239,7 +239,7 @@ export class TwitterQuoteClient {
                 // Update the last checked tweet ID after processing each tweet
                 this.client.lastCheckedTweetId = BigInt(tweet.id);
             } else {
-                elizaLogger.log(
+                elizaLogger.debug(
                     "Skipping tweet because it has already been processed",
                     tweet.id
                 );

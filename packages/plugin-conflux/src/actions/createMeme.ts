@@ -14,7 +14,7 @@ import {
 } from "@elizaos/core";
 import {
     createMemeTemplate,
-    shouldCreateMemeTemplate,
+    shouldCreateMemeOnRecentHistoryTemplate,
 } from "../templates/createMeme";
 import { PumpSchema, isPumpContent, isPumpCreateContent } from "../types";
 import { createToken } from "../utils/token/chain";
@@ -40,7 +40,12 @@ function resetDailyCountIfNeeded(username: string) {
 }
 
 async function canCreateMeme(runtime: IAgentRuntime, state: State) {
-    if (!runtime.getSetting("CONFLUX_MEME_CREATE_TWITTER_RESTRICTION")) {
+    const applyTwitterRestriction =
+        runtime.getSetting("CONFLUX_MEME_CREATE_TWITTER_RESTRICTION") &&
+        runtime
+            .getSetting("CONFLUX_MEME_CREATE_TWITTER_RESTRICTION")
+            .toLowerCase() === "true";
+    if (!applyTwitterRestriction) {
         return true;
     }
 
@@ -64,7 +69,7 @@ async function canCreateMeme(runtime: IAgentRuntime, state: State) {
             `Daily meme creation limit (${dailyLimit}) reached for user ${username}`
         );
         throw new Error(
-            `Daily meme creation limit (${dailyLimit}) reached for user ${username}`
+            `Daily token limit reached. Token can be issued again after 24 hours.`
         );
     }
 
@@ -104,7 +109,9 @@ async function canCreateMeme(runtime: IAgentRuntime, state: State) {
             )
         )
     ) {
-        throw new Error(`Do not have enough followers to create a meme`);
+        throw new Error(
+            `Sorry, it looks like your X account has not yet met the token issuance standards`
+        );
     }
 
     const minDaysPeriod = Number(
@@ -115,25 +122,27 @@ async function canCreateMeme(runtime: IAgentRuntime, state: State) {
     const daysDiff = (Date.now() - senderCreatedAt) / (1000 * 60 * 60 * 24);
     if (daysDiff < minDaysPeriod) {
         throw new Error(
-            `Need to wait for ${minDaysPeriod} days since you created your account to create a meme`
+            `Sorry, it looks like your X account has not yet met the token issuance standards`
         );
     }
 
-    const context = composeContext({
-        state,
-        template: shouldCreateMemeTemplate,
-    });
+    // const context = composeContext({
+    //     state,
+    //     template: shouldCreateMemeOnRecentHistoryTemplate,
+    // });
 
-    const shouldRespond = await generateShouldRespond({
-        runtime,
-        context,
-        modelClass: ModelClass.SMALL,
-    });
+    // const shouldRespond = await generateShouldRespond({
+    //     runtime,
+    //     context,
+    //     modelClass: ModelClass.SMALL,
+    // });
 
-    if (shouldRespond !== "RESPOND") {
-        elizaLogger.warn("Should not respond");
-        return false;
-    }
+    // if (shouldRespond !== "RESPOND") {
+    //     elizaLogger.warn("Should not respond");
+    //     throw new Error(
+    //         "Sorry, it looks like your X account has not yet met the token issuance standards."
+    //     );
+    // }
 
     return true;
 }
@@ -142,8 +151,8 @@ async function canCreateMeme(runtime: IAgentRuntime, state: State) {
 export const createMeme: Action = {
     name: "CREATE_MEME",
     description:
-        "Create meme coin on ConfiPump. This action needs token name, symbol, description and image url to initiate. If no enough parameters is provided, remind user to provide enough parameters.",
-    similes: ["CREATE_TOKEN", "CONFI_PUMP"],
+        "Create and launch meme tokens on ConfiPump platform. This action should be triggered in two scenarios: 1) When user directly requests to create a new token with required parameters (symbol, description, etc), or 2) When user's current message is providing additional required information for a previous token creation request.",
+    similes: ["CREATE_TOKEN", "CONFI_PUMP", "CREATE_COIN"],
     examples: [
         // Create token example
         [
@@ -261,18 +270,28 @@ export const createMeme: Action = {
             const contentObject = content.object;
 
             if (contentObject.action === "REJECT") {
-                console.log("reject: ", contentObject.reason);
+                elizaLogger.info("reject: ", contentObject.reason);
                 if (callback) {
                     callback({
                         text: `${contentObject.reason}`,
                     });
                 }
-                return false;
+                return true;
             }
 
             if (!isPumpCreateContent(contentObject)) {
                 elizaLogger.error("Invalid PumpCreateContent: ", contentObject);
                 throw new Error("Invalid PumpCreateContent");
+            }
+            const dryRun = runtime.getSetting("CONFLUX_MEME_CREATE_DRY_RUN");
+            if (dryRun) {
+                elizaLogger.info("Dry run mode, skipping token creation");
+                if (callback) {
+                    callback({
+                        text: `Dry run mode, skipping token creation`,
+                    });
+                }
+                return true;
             }
             const callbackMessage = await createToken(runtime, contentObject);
 

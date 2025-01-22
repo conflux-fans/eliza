@@ -80,7 +80,7 @@ if (!ConfiPumpHashTag) {
 
 export const twitterMessageHandlerTemplate =
     `<persona>
-You are an experienced blockchain enthusiast and seasoned researcher with years of expertise in cryptocurrency trading and blockchain technology. You are quick to spot nuances and underlying stories that others might overlook and have a strong analytical bent in your approach.
+You are {{agentName}} (@{{twitterUserName}}), an experienced blockchain enthusiast and seasoned researcher with years of expertise in cryptocurrency trading and blockchain technology. You are quick to spot nuances and underlying stories that others might overlook and have a strong analytical bent in your approach.
 </persona>
 
 <task>
@@ -150,7 +150,6 @@ Thread of Tweets You Are Replying To:
 12. Tweet: "The bull run is back!"
    Reply: "The bull run always comes with a bear hangover."
 </examples>
-
 <guidelines>
 - Focus on long-term value and real-world utility over short-term hype
 - Challenge claims with data, facts and critical analysis
@@ -159,16 +158,25 @@ Thread of Tweets You Are Replying To:
 - Maintain a professional yet approachable tone
 - Avoid confrontation while standing firm on principles
 - Back claims with evidence when possible
-- If the current post contains a request matching any available actions:
-  {{actionNames}}
-  {{actions}}
-  You MUST include a clear statement of the action you PLAN to take (note: action may fail)
+</guidelines>
 
-Here is the current post text again. Remember to include an action if the current post text includes a prompt that asks for one of the available actions mentioned above (does not need to be exact)
+<action>
+You must include an action if the current CONVERSATION matches any available actions:
+
+{{actionNames}}
+{{actions}}
+
+When analyzing the conversation:
+1. Check if any direct requests match available actions
+2. Look for implicit requests that align with action capabilities
+3. Consider context and user intent
+4. Only trigger actions when there is clear alignment
+5. Default to standard reply if no clear action match
+
+Current conversation:
 {{currentPost}}
-Here is the descriptions of images in the Current post.
-{{imageDescriptions}}
-</guidelines>` + messageCompletionFooter;
+{{formattedConversation}}
+</action>` + messageCompletionFooter;
 
 export const twitterShouldRespondTemplate = (targetUsersStr: string) =>
     `# INSTRUCTIONS: Determine if {{agentName}} (@{{twitterUserName}}) should respond to the message and participate in the conversation. Do not comment.
@@ -181,8 +189,8 @@ For other users:
 - {{agentName}} should RESPOND to messages directed at them
 - {{agentName}} should RESPOND to conversations relevant to their background
 - {{agentName}} should RESPOND to conversations if they are positive about ConfiPump or Conflux
+- {{agentName}} should RESPOND if conversation is going on
 - {{agentName}} should IGNORE irrelevant messages
-- {{agentName}} should IGNORE very short messages unless directly addressed
 - {{agentName}} should IGNORE messages that display negativity, such as slander, insults, or unfounded rumors.
 - {{agentName}} should STOP if asked to stop
 - {{agentName}} should STOP if conversation is concluded
@@ -263,7 +271,7 @@ export class TwitterInteractionClient {
             if (targetUsers.length) {
                 const TARGET_USERS = targetUsers;
 
-                elizaLogger.log("Processing target users:", TARGET_USERS);
+                elizaLogger.debug("Processing target users:", TARGET_USERS);
 
                 if (TARGET_USERS.length > 0) {
                     // Create a map to store tweets by user
@@ -290,7 +298,7 @@ export class TwitterInteractionClient {
                                     Date.now() - tweet.timestamp * 1000 <
                                     2 * 60 * 60 * 1000;
 
-                                elizaLogger.log(`Tweet ${tweet.id} checks:`, {
+                                elizaLogger.debug(`Tweet ${tweet.id} checks:`, {
                                     isUnprocessed,
                                     isRecent,
                                     isReply: tweet.isReply,
@@ -322,17 +330,20 @@ export class TwitterInteractionClient {
 
                     // Select one tweet from each user that has tweets
                     const selectedTweets: Tweet[] = [];
-                    for (const [username, tweets] of tweetsByUser) {
+                    for (const [_, tweets] of tweetsByUser) {
                         if (tweets.length > 0) {
                             // Randomly select one tweet from this user
-                            const randomTweet =
-                                tweets[
-                                    Math.floor(Math.random() * tweets.length)
-                                ];
-                            selectedTweets.push(randomTweet);
-                            elizaLogger.log(
-                                `Selected tweet from ${username}: ${randomTweet.text?.substring(0, 100)}`
-                            );
+                            // const randomTweet =
+                            //     tweets[
+                            //         Math.floor(Math.random() * tweets.length)
+                            //     ];
+                            // selectedTweets.push(randomTweet);
+                            // elizaLogger.log(
+                            //     `Selected tweet from ${username}: ${randomTweet.text?.substring(0, 100)}`
+                            // );
+                            for (const tweet of tweets) {
+                                selectedTweets.push(tweet);
+                            }
                         }
                     }
 
@@ -427,7 +438,7 @@ export class TwitterInteractionClient {
                     // Update the last checked tweet ID after processing each tweet
                     this.client.lastCheckedTweetId = BigInt(tweet.id);
                 } else {
-                    elizaLogger.log(
+                    elizaLogger.debug(
                         "Skipping tweet because it has already been processed",
                         tweet.id
                     );
@@ -653,30 +664,43 @@ export class TwitterInteractionClient {
                         return memories;
                     };
 
-                    const responseMessages = await callback(response);
-
                     state = (await this.runtime.updateRecentMessageState(
                         state
                     )) as State;
 
-                    for (const responseMessage of responseMessages) {
-                        if (
-                            responseMessage ===
-                            responseMessages[responseMessages.length - 1]
-                        ) {
-                            responseMessage.content.action = response.action;
-                        } else {
-                            responseMessage.content.action = "CONTINUE";
-                        }
-                        await this.runtime.messageManager.createMemory(
-                            responseMessage
-                        );
-                    }
+                    elizaLogger.info("Action: ", response.action);
 
-                    if (response.action !== "CONTINUE") {
+                    if (
+                        response.action === "IGNORE" ||
+                        response.action === "NONE" ||
+                        response.action === "CONTINUE"
+                    ) {
+                        const responseMessages = await callback(response);
+
+                        for (const responseMessage of responseMessages) {
+                            if (
+                                responseMessage ===
+                                responseMessages[responseMessages.length - 1]
+                            ) {
+                                responseMessage.content.action =
+                                    response.action;
+                            } else {
+                                responseMessage.content.action = "CONTINUE";
+                            }
+                            await this.runtime.messageManager.createMemory(
+                                responseMessage
+                            );
+                        }
+                    } else {
                         await this.runtime.processActions(
                             message,
-                            responseMessages,
+                            [
+                                {
+                                    content: {
+                                        action: response.action,
+                                    },
+                                },
+                            ] as Memory[],
                             state,
                             callback
                         );
