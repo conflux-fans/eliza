@@ -166,7 +166,7 @@ export const confiPump: Action = {
                     text: `Action rejected: ${contentObject.reason}`,
                 });
             }
-            return false;
+            return true;
         }
 
         try {
