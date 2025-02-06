@@ -1,9 +1,9 @@
 import {
-    Action,
-    IAgentRuntime,
-    Memory,
-    State,
-    HandlerCallback,
+    type Action,
+    type IAgentRuntime,
+    type Memory,
+    type State,
+    type HandlerCallback,
     elizaLogger,
 } from "@elizaos/core";
 import { generateObject, composeContext, ModelClass } from "@elizaos/core";
@@ -108,8 +108,8 @@ export const confiPump: Action = {
         //     },
         // ],
     ],
-
-    validate: async (runtime: IAgentRuntime, message: Memory) => {
+    // eslint-disable-next-line
+    validate: async (_runtime: IAgentRuntime, _message: Memory) => {
         return true; // No extra validation needed
     },
 
@@ -117,21 +117,22 @@ export const confiPump: Action = {
         runtime: IAgentRuntime,
         message: Memory,
         state?: State,
-        options?: { [key: string]: unknown },
+        _options?: { [key: string]: unknown },
         callback?: HandlerCallback
     ) => {
         let success = false;
 
         // Initialize or update state
-        if (!state) {
-            state = (await runtime.composeState(message)) as State;
+        let currentState = state;
+        if (!currentState) {
+            currentState = (await runtime.composeState(message)) as State;
         } else {
-            state = await runtime.updateRecentMessageState(state);
+            currentState = await runtime.updateRecentMessageState(currentState);
         }
 
         // Generate content based on template
         const context = composeContext({
-            state,
+            state: currentState,
             template: confiPumpTemplate,
         });
 
@@ -156,7 +157,7 @@ export const confiPump: Action = {
         });
 
         const contentObject = content.object;
-        let data: any;
+        let data: `0x${string}`;
         let value: bigint;
 
         if (contentObject.action === "REJECT") {
@@ -257,7 +258,7 @@ export const confiPump: Action = {
                     });
                     break;
 
-                case "SELL_TOKEN":
+                case "SELL_TOKEN": {
                     if (!isPumpSellContent(contentObject)) {
                         elizaLogger.error(
                             "Invalid PumpSellContent: ",
@@ -292,6 +293,7 @@ export const confiPump: Action = {
                     });
                     value = 0n;
                     break;
+                }
             }
 
             // Simulate and execute transaction
