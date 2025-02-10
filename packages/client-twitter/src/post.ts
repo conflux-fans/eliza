@@ -321,7 +321,7 @@ export class TwitterPostClient {
         const generateNewRecommendationTweetLoop = async () => {
             const lastPost = await this.runtime.cacheManager.get<{
                 timestamp: number;
-            }>("twitter/" + this.twitterUsername + "/lastRecommendation");
+            }>("twitter/" + this.twitterUsername + "/lastPost");
 
             const lastPostTimestamp = lastPost?.timestamp ?? 0;
             const minMinutes = this.client.twitterConfig.POST_INTERVAL_MIN;
@@ -348,8 +348,8 @@ export class TwitterPostClient {
             }>("twitter/" + this.twitterUsername + "/lastSummary");
 
             const lastPostTimestamp = lastPost?.timestamp ?? 0;
-            const minMinutes = this.client.twitterConfig.POST_INTERVAL_MIN;
-            const maxMinutes = this.client.twitterConfig.POST_INTERVAL_MAX;
+            const minMinutes = this.client.twitterConfig.POST_SUMMARY_INTERVAL_MIN;
+            const maxMinutes = this.client.twitterConfig.POST_SUMMARY_INTERVAL_MAX;
             const randomMinutes =
                 Math.floor(Math.random() * (maxMinutes - minMinutes + 1)) +
                 minMinutes;
@@ -357,6 +357,12 @@ export class TwitterPostClient {
 
             if (Date.now() > lastPostTimestamp + delay) {
                 await this.generateNewSummaryTweet();
+                await this.runtime.cacheManager.set(
+                    `twitter/${this.client.profile.username}/lastSummary`,
+                    {
+                        timestamp: Date.now(),
+                    }
+                );
             }
 
             setTimeout(() => {
