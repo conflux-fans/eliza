@@ -200,6 +200,16 @@ export async function validateTwitterConfig(
                     process.env.POST_INTERVAL_MAX,
                 180 // 3 hours
             ),
+            POST_SUMMARY_INTERVAL_MIN: safeParseInt(
+                runtime.getSetting("POST_SUMMARY_INTERVAL_MIN") ||
+                    process.env.POST_SUMMARY_INTERVAL_MIN,
+                180 // 3 hours
+            ),
+            POST_SUMMARY_INTERVAL_MAX: safeParseInt(
+                runtime.getSetting("POST_SUMMARY_INTERVAL_MAX") ||
+                    process.env.POST_SUMMARY_INTERVAL_MAX,
+                240 // 4 hours
+            ),
 
             // bool
             ENABLE_ACTION_PROCESSING:
