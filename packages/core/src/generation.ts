@@ -511,7 +511,7 @@ export async function generateText({
     const apiKey = runtime.token;
 
     try {
-        elizaLogger.debug(
+        elizaLogger.info(
             `Trimming context to max length of ${max_context_length} tokens.`
         );
 
@@ -552,18 +552,18 @@ export async function generateText({
                 const { text: openaiResponse } = await aiGenerateText({
                     model: openai.languageModel(model),
                     prompt: context,
-                    system:
-                        runtime.character.system ??
-                        settings.SYSTEM_PROMPT ??
-                        undefined,
-                    tools: tools,
-                    onStepFinish: onStepFinish,
-                    maxSteps: maxSteps,
-                    temperature: temperature,
-                    maxTokens: max_response_length,
-                    frequencyPenalty: frequency_penalty,
-                    presencePenalty: presence_penalty,
-                    experimental_telemetry: experimental_telemetry,
+                    // system:
+                    //     runtime.character.system ??
+                    //     settings.SYSTEM_PROMPT ??
+                    //     undefined,
+                    // tools: tools,
+                    // onStepFinish: onStepFinish,
+                    // maxSteps: maxSteps,
+                    // temperature: temperature,
+                    // maxTokens: max_response_length,
+                    // frequencyPenalty: frequency_penalty,
+                    // presencePenalty: presence_penalty,
+                    // experimental_telemetry: experimental_telemetry,
                 });
 
                 response = openaiResponse;

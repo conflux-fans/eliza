@@ -39,6 +39,15 @@ export const models: Models = {
                 presence_penalty: 0.0,
                 temperature: 0.6,
             },
+            [ModelClass.REASONING]: {
+                name: settings.REASONING_OPENAI_MODEL || "o3-mini",
+                stop: [],
+                maxInputTokens: 128000,
+                maxOutputTokens: 8192,
+                frequency_penalty: 0.0,
+                presence_penalty: 0.0,
+                temperature: 0.6,
+            },
             [ModelClass.EMBEDDING]: {
                 name:
                     settings.EMBEDDING_OPENAI_MODEL || "text-embedding-3-small",

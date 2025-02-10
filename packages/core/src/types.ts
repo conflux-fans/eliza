@@ -134,6 +134,7 @@ export enum ModelClass {
     LARGE = "large",
     EMBEDDING = "embedding",
     IMAGE = "image",
+    REASONING = "reasoning",
 }
 
 /**
@@ -168,6 +169,10 @@ export type ModelSettings = {
     experimental_telemetry?: TelemetrySettings;
 };
 
+export type ReasoningModelSettings = {
+    name: string;
+};
+
 /** Image model settings */
 export type ImageModelSettings = {
     name: string;
@@ -192,6 +197,7 @@ export type Model = {
         [ModelClass.SMALL]?: ModelSettings;
         [ModelClass.MEDIUM]?: ModelSettings;
         [ModelClass.LARGE]?: ModelSettings;
+        [ModelClass.REASONING]?: ModelSettings;
         [ModelClass.EMBEDDING]?: EmbeddingModelSettings;
         [ModelClass.IMAGE]?: ImageModelSettings;
     };

@@ -43,7 +43,7 @@ if (!confiPumpHashtag) {
     throw new Error("CONFLUX_CONFI_PUMP_HASHTAG is not set");
 }
 
-const twitterPostTemplate = `
+const twitterPostRecommendationTemplate = `
 # Task
 Generate a twitter post in the style and perspective of {{agentName}} @{{twitterUserName}}.
 
@@ -81,6 +81,46 @@ Tokens are listed in the form of "<progress>% <ticker>(<name>) - <description>".
 
 # History Tweets
 {{historyTweets}}
+`;
+
+const twitterPostSummaryTemplate = `
+<persona>  
+You are (@{{twitterUserName}}), an experienced blockchain enthusiast and seasoned researcher with years of expertise in cryptocurrency trading and blockchain technology. You are well-versed in blockchain jargon and adept at correcting factual errors with sharp, humorous remarks.  
+</persona>  
+
+<task>  
+You will be provided with scanned tweets or content related to AI, DeFi, DApps, protocols, or trending topics involving $CFX, $BTC, $ETH, or other blockchain-related trends. You will also be provided with your history tweets. You need to select the most important 2~3 facts/views you didn't convey in your history tweets, and organize the most important ones into a well-structured tweet listing the most important facts/views. If multiple facts/views are related to the same topic, you can organize them in a proper format based on origianl tweet published time.
+
+NOTE: You shall not summary the same or similar information if you (@{{twitterUserName}}) already conveyed it in history tweets.
+</task>
+
+
+<instructions>  
+1. Focus on extracting the most relevant and actionable insights from the content.
+2. Highlight any significant developments, trends, or market movements.  
+3. Use concise and clear language, avoiding unnecessary jargon unless it is widely understood in the blockchain community.  
+4. Always include "$" symbols when referencing tokens or cryptocurrencies.  
+5. History tweets: Avoid conveying the same information if self has already conveyed it in history tweets; don't consistently use the same words in history tweets.
+6. Provide fact or view source to make the summary more accurate and credible. After the summary, you can add your comment.
+</instructions>  
+
+<guidelines>  
+1. Prioritize accuracy and relevance in your summaries.  
+2. Ensure all token names are prefixed with "$" for clarity.  
+3. Avoid adding personal commentary or unrelated information.  
+4. Keep the output concise and directly tied to the input content.  
+5. Be cool, brief (max 20 words), confident, and humorous.  
+6. No yapping. No 'here's what you asked for'. Output only the required summary.  
+7. Use a calm tone.  
+</guidelines>
+
+<selfHistoryTweets>
+{{historyTweets}}
+</selfHistoryTweets>
+
+<tweetListToSummarize>
+{{summaryTargetTweetList}}
+</tweetListToSummarize>
 `;
 
 export const twitterActionTemplate =
@@ -278,7 +318,7 @@ export class TwitterPostClient {
             await this.client.init();
         }
 
-        const generateNewTweetLoop = async () => {
+        const generateNewRecommendationTweetLoop = async () => {
             const lastPost = await this.runtime.cacheManager.get<{
                 timestamp: number;
             }>("twitter/" + this.twitterUsername + "/lastPost");
@@ -292,11 +332,35 @@ export class TwitterPostClient {
             const delay = randomMinutes * 60 * 1000;
 
             if (Date.now() > lastPostTimestamp + delay) {
-                await this.generateNewTweet();
+                await this.generateNewRecommendationTweet();
             }
 
             setTimeout(() => {
-                generateNewTweetLoop(); // Set up next iteration
+                generateNewRecommendationTweetLoop(); // Set up next iteration
+            }, delay);
+
+            elizaLogger.log(`Next tweet scheduled in ${randomMinutes} minutes`);
+        };
+
+        const generateNewSummaryTweetLoop = async () => {
+            const lastPost = await this.runtime.cacheManager.get<{
+                timestamp: number;
+            }>("twitter/" + this.twitterUsername + "/lastPost");
+
+            const lastPostTimestamp = lastPost?.timestamp ?? 0;
+            const minMinutes = this.client.twitterConfig.POST_INTERVAL_MIN;
+            const maxMinutes = this.client.twitterConfig.POST_INTERVAL_MAX;
+            const randomMinutes =
+                Math.floor(Math.random() * (maxMinutes - minMinutes + 1)) +
+                minMinutes;
+            const delay = randomMinutes * 60 * 1000;
+
+            if (Date.now() > lastPostTimestamp + delay) {
+                await this.generateNewSummaryTweet();
+            }
+
+            setTimeout(() => {
+                generateNewSummaryTweetLoop(); // Set up next iteration
             }, delay);
 
             elizaLogger.log(`Next tweet scheduled in ${randomMinutes} minutes`);
@@ -331,10 +395,12 @@ export class TwitterPostClient {
         };
 
         if (this.client.twitterConfig.POST_IMMEDIATELY) {
-            await this.generateNewTweet();
+            await this.generateNewSummaryTweet();
+            await this.generateNewRecommendationTweet();
         }
 
-        generateNewTweetLoop();
+        generateNewRecommendationTweetLoop();
+        generateNewSummaryTweetLoop();
         elizaLogger.log("Tweet generation loop started");
 
         if (this.client.twitterConfig.ENABLE_ACTION_PROCESSING) {
@@ -537,8 +603,8 @@ export class TwitterPostClient {
     /**
      * Generates and posts a new tweet. If isDryRun is true, only logs what would have been posted.
      */
-    async generateNewTweet() {
-        elizaLogger.log("Generating new tweet");
+    async generateNewRecommendationTweet() {
+        elizaLogger.log("Generating new recommendation tweet");
 
         try {
             const roomId = stringToUuid(
@@ -602,7 +668,7 @@ export class TwitterPostClient {
                 state,
                 template:
                     this.runtime.character.templates?.twitterPostTemplate ||
-                    twitterPostTemplate,
+                    twitterPostRecommendationTemplate,
             });
 
             elizaLogger.debug("generate post prompt:\n" + context);
@@ -709,6 +775,205 @@ export class TwitterPostClient {
         }
     }
 
+    async getFormattedSummaryTargetTweetList(): Promise<string> {
+        if (this.client.twitterConfig.TWITTER_SUMMARY_TARGET_USERS.length === 0) {
+            return "";
+        }
+
+        let formattedTweetList = "";
+        let index = 1;
+
+        elizaLogger.log("Summary target tweet list: " + this.client.twitterConfig.TWITTER_SUMMARY_TARGET_USERS);
+
+        for (const targetUser of this.client.twitterConfig.TWITTER_SUMMARY_TARGET_USERS) {
+            const tweets = this.client.twitterClient.getTweets(
+                targetUser,
+                10
+            );
+            for await (const tweet of tweets) {
+                // latest 1 day
+                if (tweet.timestamp && tweet.timestamp > Date.now() - 24 * 60 * 60 * 1000) {
+                    formattedTweetList += `${index}. ${tweet.username}: ${tweet.text}\n`;
+                    index++;
+                }
+            }
+        }
+
+        elizaLogger.log("Formatted summary target tweet list: " + formattedTweetList);
+
+        return formattedTweetList;
+    }
+
+    async generateNewSummaryTweet() {
+        elizaLogger.log("Generating new summary tweet");
+
+        try {
+            const roomId = stringToUuid(
+                "twitter_generate_room-" + this.client.profile.username
+            );
+            await this.runtime.ensureUserExists(
+                this.runtime.agentId,
+                this.client.profile.username,
+                this.runtime.character.name,
+                "twitter"
+            );
+
+            const topics = this.runtime.character.topics.join(", ");
+
+            const formattedSummaryTargetTweetList = await this.getFormattedSummaryTargetTweetList();
+
+            if (formattedSummaryTargetTweetList.length === 0) {
+                elizaLogger.log("No summary target tweet list found");
+                return;
+            }
+
+            // returns AsyncGenerator<Tweet>
+            const latestTweets = this.client.twitterClient.getTweets(
+                this.twitterUsername,
+                10
+            );
+
+            let formattedTweetList = "";
+
+            let index = 1;
+            for await (const tweet of latestTweets) {
+                formattedTweetList += `${index}.(${new Date(tweet.timestamp).toLocaleString()}) ${tweet.username}: ${tweet.text}\n`;
+                index++;
+            }
+
+            // const formattedConversation = latestTweets.map((tweet) => {
+
+            // console.log("tokenList", tokenList);
+
+            const maxTweetLength = this.client.twitterConfig.MAX_TWEET_LENGTH;
+            const state = await this.runtime.composeState(
+                {
+                    userId: this.runtime.agentId,
+                    roomId: roomId,
+                    agentId: this.runtime.agentId,
+                    content: {
+                        text: topics || "",
+                        action: "TWEET",
+                    },
+                },
+                {
+                    twitterUserName: this.client.profile.username,
+                    summaryTargetTweetList: formattedSummaryTargetTweetList,
+                    historyTweets: formattedTweetList,
+                    maxTweetLength,
+                }
+            );
+
+            const context = composeContext({
+                state,
+                template:
+                    twitterPostSummaryTemplate,
+            });
+
+            elizaLogger.debug("generate summary tweet prompt:\n" + context);
+
+            const response = await generateText({
+                runtime: this.runtime,
+                context,
+                modelClass: ModelClass.REASONING,
+            });
+
+            const rawTweetContent = cleanJsonResponse(response);
+
+            // First attempt to clean content
+            let tweetTextForPosting = null;
+            let mediaData = null;
+
+            // Try parsing as JSON first
+            const parsedResponse = parseJSONObjectFromText(rawTweetContent);
+            if (parsedResponse?.text) {
+                tweetTextForPosting = parsedResponse.text;
+            }
+
+            if (
+                parsedResponse?.attachments &&
+                parsedResponse?.attachments.length > 0
+            ) {
+                mediaData = await fetchMediaData(parsedResponse.attachments);
+            }
+
+            // Try extracting text attribute
+            if (!tweetTextForPosting) {
+                const parsingText = extractAttributes(rawTweetContent, [
+                    "text",
+                ]).text;
+                if (parsingText) {
+                    tweetTextForPosting = truncateToCompleteSentence(
+                        extractAttributes(rawTweetContent, ["text"]).text,
+                        this.client.twitterConfig.MAX_TWEET_LENGTH
+                    );
+                }
+            }
+
+            // Use the raw text
+            if (!tweetTextForPosting) {
+                tweetTextForPosting = rawTweetContent;
+            }
+
+            // Truncate the content to the maximum tweet length specified in the environment settings, ensuring the truncation respects sentence boundaries.
+            if (maxTweetLength) {
+                tweetTextForPosting = truncateToCompleteSentence(
+                    tweetTextForPosting,
+                    maxTweetLength
+                );
+            }
+
+            const removeQuotes = (str: string) =>
+                str.replace(/^['"](.*)['"]$/, "$1");
+
+            const fixNewLines = (str: string) => str.replaceAll(/\\n/g, "\n\n"); //ensures double spaces
+
+            // Final cleaning
+            tweetTextForPosting = removeQuotes(
+                fixNewLines(tweetTextForPosting)
+            );
+
+            if (this.isDryRun) {
+                elizaLogger.info(
+                    `Dry run: would have posted tweet: ${tweetTextForPosting}`
+                );
+                return;
+            }
+
+            try {
+                if (this.approvalRequired) {
+                    // Send for approval instead of posting directly
+                    elizaLogger.log(
+                        `Sending Tweet For Approval:\n ${tweetTextForPosting}`
+                    );
+                    await this.sendForApproval(
+                        tweetTextForPosting,
+                        roomId,
+                        rawTweetContent
+                    );
+                    elizaLogger.log("Tweet sent for approval");
+                } else {
+                    elizaLogger.log(
+                        `Posting new tweet:\n ${tweetTextForPosting}`
+                    );
+                    this.postTweet(
+                        this.runtime,
+                        this.client,
+                        tweetTextForPosting,
+                        roomId,
+                        rawTweetContent,
+                        this.twitterUsername,
+                        mediaData
+                    );
+                }
+            } catch (error) {
+                elizaLogger.error("Error sending tweet:", error);
+            }
+        } catch (error) {
+            elizaLogger.error("Error generating summary tweet:", error);
+        }
+    }
+
     private async generateTweetContent(
         tweetState: any,
         options?: {
@@ -721,7 +986,7 @@ export class TwitterPostClient {
             template:
                 options?.template ||
                 this.runtime.character.templates?.twitterPostTemplate ||
-                twitterPostTemplate,
+                twitterPostRecommendationTemplate,
         });
 
         const response = await generateText({
