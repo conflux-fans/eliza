@@ -321,7 +321,7 @@ export class TwitterPostClient {
         const generateNewRecommendationTweetLoop = async () => {
             const lastPost = await this.runtime.cacheManager.get<{
                 timestamp: number;
-            }>("twitter/" + this.twitterUsername + "/lastPost");
+            }>("twitter/" + this.twitterUsername + "/lastRecommendation");
 
             const lastPostTimestamp = lastPost?.timestamp ?? 0;
             const minMinutes = this.client.twitterConfig.POST_INTERVAL_MIN;
@@ -345,7 +345,7 @@ export class TwitterPostClient {
         const generateNewSummaryTweetLoop = async () => {
             const lastPost = await this.runtime.cacheManager.get<{
                 timestamp: number;
-            }>("twitter/" + this.twitterUsername + "/lastPost");
+            }>("twitter/" + this.twitterUsername + "/lastSummary");
 
             const lastPostTimestamp = lastPost?.timestamp ?? 0;
             const minMinutes = this.client.twitterConfig.POST_INTERVAL_MIN;
