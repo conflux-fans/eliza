@@ -101,7 +101,7 @@ NOTE: You shall not summary the same or similar information if you (@{{twitterUs
 3. Use concise and clear language, avoiding unnecessary jargon unless it is widely understood in the blockchain community.  
 4. Always include "$" symbols when referencing tokens or cryptocurrencies.  
 5. History tweets: Avoid conveying the same information if self has already conveyed it in history tweets; don't consistently use the same words in history tweets.
-6. Provide fact or view source to make the summary more accurate and credible. After the summary, you can add your comment.
+6. After the summary, you can add your brief comment (no more than 20 words).
 </instructions>  
 
 <guidelines>  
@@ -109,7 +109,7 @@ NOTE: You shall not summary the same or similar information if you (@{{twitterUs
 2. Ensure all token names are prefixed with "$" for clarity.  
 3. Avoid adding personal commentary or unrelated information.  
 4. Keep the output concise and directly tied to the input content.  
-5. Be cool, brief (max 20 words), confident, and humorous.  
+5. Be cool, brief, confident, and humorous.  
 6. No yapping. No 'here's what you asked for'. Output only the required summary.  
 7. Use a calm tone.  
 </guidelines>
@@ -339,7 +339,7 @@ export class TwitterPostClient {
                 generateNewRecommendationTweetLoop(); // Set up next iteration
             }, delay);
 
-            elizaLogger.log(`Next tweet scheduled in ${randomMinutes} minutes`);
+            elizaLogger.log(`Next recommendation tweet scheduled in ${randomMinutes} minutes`);
         };
 
         const generateNewSummaryTweetLoop = async () => {
@@ -369,7 +369,7 @@ export class TwitterPostClient {
                 generateNewSummaryTweetLoop(); // Set up next iteration
             }, delay);
 
-            elizaLogger.log(`Next tweet scheduled in ${randomMinutes} minutes`);
+            elizaLogger.log(`Next summary tweet scheduled in ${randomMinutes} minutes`);
         };
 
         const processActionsLoop = async () => {
@@ -405,9 +405,10 @@ export class TwitterPostClient {
             await this.generateNewRecommendationTweet();
         }
 
+        elizaLogger.info("Tweet generation loop started");
+
         generateNewRecommendationTweetLoop();
         generateNewSummaryTweetLoop();
-        elizaLogger.log("Tweet generation loop started");
 
         if (this.client.twitterConfig.ENABLE_ACTION_PROCESSING) {
             processActionsLoop().catch((error) => {
@@ -798,9 +799,11 @@ export class TwitterPostClient {
             );
             for await (const tweet of tweets) {
                 // latest 1 day
-                if (tweet.timestamp && tweet.timestamp > Date.now() - 24 * 60 * 60 * 1000) {
+                if (tweet.timestamp && tweet.timestamp * 1000 > Date.now() - 24 * 60 * 60 * 1000) {
                     formattedTweetList += `${index}. ${tweet.username}: ${tweet.text}\n`;
                     index++;
+                } else {
+                    elizaLogger.log(`Skipping tweet from ${tweet.username} because it's older than 1 day (${new Date(tweet.timestamp * 1000).toLocaleString()})`);
                 }
             }
         }
@@ -811,7 +814,7 @@ export class TwitterPostClient {
     }
 
     async generateNewSummaryTweet() {
-        elizaLogger.log("Generating new summary tweet");
+        elizaLogger.info("Generating new summary tweet");
 
         try {
             const roomId = stringToUuid(
