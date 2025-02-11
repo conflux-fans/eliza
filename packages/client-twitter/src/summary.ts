@@ -288,12 +288,12 @@ export class TwitterSummaryClient {
             );
             const body = await standardTweetResult.json();
             if (!body?.data?.create_tweet?.tweet_results?.result) {
-                elizaLogger.error("Error sending tweet; Bad response:", body);
+                elizaLogger.error(`Error sending tweet; Bad response: ${body}`);
                 return;
             }
             return body.data.create_tweet.tweet_results.result;
         } catch (error) {
-            elizaLogger.error("Error sending standard Tweet:", error);
+            elizaLogger.error(`Error sending standard Tweet: ${error}`);
             throw error;
         }
     }
@@ -342,7 +342,7 @@ export class TwitterSummaryClient {
                 rawTweetContent
             );
         } catch (error) {
-            elizaLogger.error("Error sending tweet:", error);
+            elizaLogger.error(`Error sending tweet: ${error}`);
         }
     }
 
@@ -528,10 +528,10 @@ export class TwitterSummaryClient {
                 );
                 
             } catch (error) {
-                elizaLogger.error("Error sending tweet:", error);
+                elizaLogger.error(`Error sending tweet: ${error}`);
             }
         } catch (error) {
-            elizaLogger.error("Error generating summary tweet:", error);
+            elizaLogger.error(`Error generating summary tweet: ${error}`);
         }
     }
 }
