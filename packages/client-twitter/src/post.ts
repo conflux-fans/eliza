@@ -44,22 +44,23 @@ if (!confiPumpHashtag) {
 }
 
 const twitterPostRecommendationTemplate = `
-# Task
+<task>
 Generate a twitter post in the style and perspective of {{agentName}} @{{twitterUserName}}.
 
-Write a 1-2 sentence post to recommend a token (tagged as $ticker) from token list and state the reason why you recommend it, from the perspective of {{agentName}}. The recommendation should consider both "graduate" and "ungraduate" tokens.
+Tokens are listed in the form of "<progress>% <ticker>(<name>) - <description>". The progress is a number between 0 and 100. People buy tokens and so the progress rises. If the progress is greater than 80%, the token will be considered as "graduate".
 
-Use simple and concise language.
-Do not state whether you hold the token. Do not urge people to buy the token. Just state the reason why you recommend it.
-Should provide token link in the form of ${confiPumpUrl}/tokens/<token_address>.
-Avoid always recommending the same token (can occasionally recommend the same token).
-
-Do not explicitely mention the token progress. Do not add commentary or acknowledge this request, just write the post.
-
-Add hashtags(#${confiPumpHashtag}) as well as the token ticker to the post to make it easier for people to find.
-
-Your response should not contain any questions. Brief, concise statements only. The total character count MUST be less than {{maxTweetLength}}. No emojis. Use \\n\\n (double spaces) between statements if there are multiple statements in your response.
-
+Write a 1-2 sentence post to recommend a token (tagged as $ticker) from token list and state the reason why you recommend it, from the perspective of {{agentName}}. The recommendation should consider both "graduate" and "ungraduate" tokens. Prioritize tokens with progress greater than 35.
+</task>
+<instructions>
+1. Use simple and concise language.
+2. Do not state whether you hold the token. Do not urge people to buy the token. Just state the reason why you recommend it.
+3. Should provide token link in the form of ${confiPumpUrl}/tokens/<token_address>.
+4. Avoid recommending the token appeared in history tweets if possible.
+5. Do not explicitely mention the token progress. Do not add commentary or acknowledge this request, just write the post.
+6. Add hashtags(#${confiPumpHashtag}) as well as the token ticker to the post to make it easier for people to find.
+7. Your response should not contain any questions. Brief, concise statements only. The total character count MUST be less than {{maxTweetLength}}. No emojis. Use \\n\\n (double spaces) between statements if there are multiple statements in your response.
+</instructions>
+<agentInfo>
 # Areas of Expertise
 {{knowledge}}
 
@@ -68,19 +69,18 @@ Your response should not contain any questions. Brief, concise statements only. 
 {{lore}}
 {{topics}}
 
-{{providers}}
-
 {{characterPostExamples}}
 
 {{postDirections}}
-
+</agentInfo>
+<context>
 # Token List
-Tokens are listed in the form of "<progress>% <ticker>(<name>) - <description>". The progress is a number between 0 and 100. People buy tokens and so the progress rises. If the progress is greater than 80%, the token will be considered as "graduate".
 
 {{tokenList}}
 
 # History Tweets
 {{historyTweets}}
+</context>
 `;
 
 export const twitterActionTemplate =
@@ -112,6 +112,7 @@ Tweet:
     postActionResponseFooter;
 
 interface TokenInfo {
+    ts: number;
     address: `0x${string}`;
     name: string;
     symbol: string;
@@ -123,6 +124,22 @@ async function getTokenList(elizaHelperUrl: string): Promise<TokenInfo[]> {
     const response = await fetch(`${elizaHelperUrl}/api/getTokenList`);
     const data = await response.json();
     return data["tokenList"];
+}
+
+function filterToken(token: TokenInfo): boolean {
+    const maxDayRange = process.env.CONFLUX_RECOMMEND_MAX_DAY_RANGE;
+    if (!maxDayRange) {
+        throw new Error("CONFLUX_RECOMMEND_MAX_DAY_RANGE is not set");
+    }
+    if (Date.now() - token.ts * 1000 > Number.parseInt(maxDayRange) * 24 * 60 * 60 * 1000) {
+        return false;
+    }
+
+    if (token.progress < 5) {
+        return false;
+    }
+
+    return true;
 }
 
 /**
@@ -554,14 +571,21 @@ export class TwitterPostClient {
 
             const topics = this.runtime.character.topics.join(", ");
 
-            const tokenList = await getTokenList(
+            const tokenList = (await getTokenList(
                 this.runtime.getSetting("CONFLUX_ELIZA_HELPER_URL")
-            );
+            )).filter(filterToken);
+
+            elizaLogger.log(`tokenList length: ${tokenList.length}`);
+
+            if (tokenList.length === 0) {
+                elizaLogger.warn("No tokens to recommend");
+                return;
+            }
 
             // returns AsyncGenerator<Tweet>
             const latestTweets = await this.client.twitterClient.getTweets(
                 this.twitterUsername,
-                10
+                20
             );
 
             let formattedTweetList = "";
