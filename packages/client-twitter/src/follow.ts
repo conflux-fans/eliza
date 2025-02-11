@@ -92,16 +92,15 @@ export class TwitterFollowClient {
         for (const follower of followers) {
             // if (true) {
             if (follower.isBlueVerified) {
-                for (const following of this.client.following) {
-                    if (following.userId === follower.userId) {
-                        continue;
-                    }
-                    if (await this.isBlacklisted(follower.userId)) {
-                        continue;
-                    }
-                    elizaLogger.log(`Following ${follower.username}`);
-                    await this.client.follow(follower.username);
+                const alreadyFollowing = this.client.following.some(f => f.userId === follower.userId);
+                if (alreadyFollowing) {
+                    continue;
                 }
+                if (await this.isBlacklisted(follower.userId)) {
+                    continue;
+                }
+                elizaLogger.log(`Following ${follower.username}`);
+                await this.client.follow(follower.username);
             }
         }
     }
