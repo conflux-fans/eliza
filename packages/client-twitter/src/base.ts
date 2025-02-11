@@ -100,6 +100,8 @@ export class ClientBase extends EventEmitter {
 
     following: Profile[] = [];
 
+    followers: Profile[] = [];
+
     async cacheTweet(tweet: Tweet): Promise<void> {
         if (!tweet) {
             console.warn("Tweet is undefined, skipping cache");
@@ -260,7 +262,27 @@ export class ClientBase extends EventEmitter {
             )
         ).profiles;
 
-        elizaLogger.log("Following updated: ", this.following.length);
+        elizaLogger.log(`Following updated: ${this.following.length}`);
+    }
+
+    async updateFollowers() {
+        this.followers = (
+            await this.requestQueue.add(() =>
+                this.twitterClient.fetchProfileFollowers(this.profile.id, 200)
+            )
+        ).profiles;
+
+        elizaLogger.log(`Followers updated: ${this.followers.length}`);
+    }
+
+    async follow(userName: string) {
+        try {
+            await this.requestQueue.add(() =>
+                this.twitterClient.followUser(userName)
+            );
+        } catch (error) {
+            elizaLogger.error(`Error following user ${userName}: ${error}`);
+        }
     }
 
     async getCachedTweetUserProfile(username: string): Promise<Profile> {
@@ -349,6 +371,14 @@ export class ClientBase extends EventEmitter {
                 await this.updateFollowing();
             },
             1000 * 60 * 10 // 10 minutes
+        );
+
+        await this.updateFollowers();
+        setInterval(
+            async () => {
+                await this.updateFollowers();
+            },
+            1000 * 60 * 180 // 2 hours
         );
 
         if (this.profile) {
