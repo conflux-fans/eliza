@@ -165,6 +165,8 @@ export class TwitterSummaryClient {
             await this.generateNewSummaryTweet();
         }
 
+        await generateNewSummaryTweetLoop();
+
         elizaLogger.info("Tweet summary generation loop started");
     }
 
