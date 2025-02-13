@@ -494,7 +494,8 @@ export class TwitterPostClient {
             );
             const body = await standardTweetResult.json();
             if (!body?.data?.create_tweet?.tweet_results?.result) {
-                elizaLogger.error("Error sending tweet; Bad response:", body);
+                elizaLogger.error("Error sending tweet; Bad response:");
+                elizaLogger.error(body);
                 return;
             }
             return body.data.create_tweet.tweet_results.result;
